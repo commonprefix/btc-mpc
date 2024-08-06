@@ -1,0 +1,17 @@
+[package]
+authors = [
+    "Apostolos Tzinas <tzinas@commonprefix.com>",
+    "Themis Papameletiou <themis@commonprefix.com>",
+]
+edition = "2021"
+name = "dkg_coordinator"
+version = "0.1.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cosmwasm-std = "2.1.1"
+cosmwasm-storage = "1.5.2"
+cw-storage-plus = "2.0.0"
+cw2 = "2.0.0"
