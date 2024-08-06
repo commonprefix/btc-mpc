@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["dkg", "contracts/dkg_coordinator"]
+
+[profile.release]
+codegen-units = 1
+debug = false
+debug-assertions = false
+incremental = false
+lto = true
+opt-level = 's'
+overflow-checks = true
+panic = 'abort'
+rpath = false
