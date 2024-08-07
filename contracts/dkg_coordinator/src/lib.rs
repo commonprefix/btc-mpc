@@ -23,6 +23,21 @@ pub fn instantiate(
     Ok(Response::new())
 }
 
+#[entry_point]
+pub fn execute(
+    deps: DepsMut,
+    _env: Env,
+    _info: MessageInfo,
+    msg: ExecuteMsg,
+) -> StdResult<Response> {
+    match msg {
+        ExecuteMsg::CreateSession { session } => {
+            SESSION.save(deps.storage, &Some(session.clone()))?;
+        }
+    }
+    Ok(Response::new())
+}
+
 #[derive(Serialize, Deserialize)]
 struct QueryResp {
     message: String,
