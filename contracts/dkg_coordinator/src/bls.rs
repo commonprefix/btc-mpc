@@ -1,6 +1,14 @@
 use base64::prelude::*;
 use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Session {
+    pub threshold: u16,
+    pub nodes: Nodes,
+    pub messages: Vec<Message>,
+    pub confirmations: Vec<Confirmation>,
+}
+
 const G2_ELEMENT_BYTE_LENGTH: usize = 96;
 const SCALAR_LENGTH: usize = 32;
 
@@ -123,7 +131,7 @@ impl<'de> Deserialize<'de> for Scalar {
 mod tests {
     use crate::bls::{
         Complaint, Confirmation, DLNizk, DdhTupleNizk, G2Element, Message,
-        MultiRecipientEncryption, RecoveryPackage, Scalar,
+        MultiRecipientEncryption, RecoveryPackage, Scalar, Session,
     };
     use serde_json;
 
@@ -544,5 +552,98 @@ mod tests {
 
         let serialized = serde_json::to_string(&expected_confirmation).unwrap();
         assert_eq!(expected_json.as_str(), serialized);
+    }
+
+    #[test]
+    fn session_serialization() {
+        let expected_json = r#"{
+            "threshold":2,
+            "nodes": {
+                "nodes":[
+                    {
+                        "id":0,
+                        "pk":"mDvVkGbiatTmwOAqr4AdExVpwvYSpSKLjU2NWjo8QP6S7oGwddmwbkZGnNMNcFC4F12rH9KEILnwQoezdpQnx/7/jO5MCQrml6QcRTkMiDHNaLQkZVkkqF5IA68QbCja",
+                        "weight":2
+                    },
+                    {
+                        "id":1,
+                        "pk":"ry/I1KkEE6I7oeGJa2UbIWoCFBYfxc44I+kwvNSzVbAv4b5RqZ2NDRaPjSsM7QeiB27HgdoCZUqJdTBiT9e0COHWLxd1oxMU/FU9ua5VxOPmjg1WLVzXTzvQBbwHD0An",
+                        "weight":3
+                    },
+                    {
+                        "id":2,
+                        "pk":"sFu/netaAwsw68JsC41uTw/Yq2IugZMh72n06WyRvTX2zsvkMbMAmSyWf3n7fRZxCDEjbrnEbatVnzpt7UUsUDb6zs1JTfEKCFor9y8tbgS7MCZx4B7ZkHKVIV+gsII0",
+                        "weight":0
+                    }
+                ],
+                "total_weight": 5,
+                "accumulated_weights": [
+                    2,
+                    5
+                ],
+                "nodes_with_nonzero_weight": [
+                    0,
+                    1
+                ]
+            },
+            "messages":[],
+            "confirmations":[]
+        }"#.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+        let expected_session = Session {
+            threshold: 2,
+            nodes: Nodes {
+                nodes: vec![
+                    Node {
+                        id: 0,
+                        pk: G2Element(vec![
+                            152, 59, 213, 144, 102, 226, 106, 212, 230, 192, 224, 42, 175, 128, 29,
+                            19, 21, 105, 194, 246, 18, 165, 34, 139, 141, 77, 141, 90, 58, 60, 64,
+                            254, 146, 238, 129, 176, 117, 217, 176, 110, 70, 70, 156, 211, 13, 112,
+                            80, 184, 23, 93, 171, 31, 210, 132, 32, 185, 240, 66, 135, 179, 118,
+                            148, 39, 199, 254, 255, 140, 238, 76, 9, 10, 230, 151, 164, 28, 69, 57,
+                            12, 136, 49, 205, 104, 180, 36, 101, 89, 36, 168, 94, 72, 3, 175, 16,
+                            108, 40, 218,
+                        ]),
+                        weight: 2,
+                    },
+                    Node {
+                        id: 1,
+                        pk: G2Element(vec![
+                            175, 47, 200, 212, 169, 4, 19, 162, 59, 161, 225, 137, 107, 101, 27,
+                            33, 106, 2, 20, 22, 31, 197, 206, 56, 35, 233, 48, 188, 212, 179, 85,
+                            176, 47, 225, 190, 81, 169, 157, 141, 13, 22, 143, 141, 43, 12, 237, 7,
+                            162, 7, 110, 199, 129, 218, 2, 101, 74, 137, 117, 48, 98, 79, 215, 180,
+                            8, 225, 214, 47, 23, 117, 163, 19, 20, 252, 85, 61, 185, 174, 85, 196,
+                            227, 230, 142, 13, 86, 45, 92, 215, 79, 59, 208, 5, 188, 7, 15, 64, 39,
+                        ]),
+                        weight: 3,
+                    },
+                    Node {
+                        id: 2,
+                        pk: G2Element(vec![
+                            176, 91, 191, 157, 235, 90, 3, 11, 48, 235, 194, 108, 11, 141, 110, 79,
+                            15, 216, 171, 98, 46, 129, 147, 33, 239, 105, 244, 233, 108, 145, 189,
+                            53, 246, 206, 203, 228, 49, 179, 0, 153, 44, 150, 127, 121, 251, 125,
+                            22, 113, 8, 49, 35, 110, 185, 196, 109, 171, 85, 159, 58, 109, 237, 69,
+                            44, 80, 54, 250, 206, 205, 73, 77, 241, 10, 8, 90, 43, 247, 47, 45,
+                            110, 4, 187, 48, 38, 113, 224, 30, 217, 144, 114, 149, 33, 95, 160,
+                            176, 130, 52,
+                        ]),
+                        weight: 0,
+                    },
+                ],
+                total_weight: 5,
+                accumulated_weights: vec![2, 5],
+                nodes_with_nonzero_weight: vec![0, 1],
+            },
+            messages: vec![],
+            confirmations: vec![],
+        };
+
+        let deserialize: Session = serde_json::from_str(&expected_json).unwrap();
+        assert_eq!(expected_session, deserialize);
+
+        let serialize = serde_json::to_string(&expected_session).unwrap();
+        assert_eq!(expected_json.as_str(), serialize);
     }
 }
