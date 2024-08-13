@@ -11,3 +11,5 @@ fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto/", subdirectory =
 rand = "0.8.5"
 serde_json = "1.0.120"
 thiserror = "1"
+cosm-orc = "4.0.1"
+serde = "1.0.207"
