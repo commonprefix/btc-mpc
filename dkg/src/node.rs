@@ -1,5 +1,5 @@
-use crate::bulletin_board::{BulletinBoard, TestBulletinBoard};
-use crate::error::{Result, Error};
+use crate::dkg_coordinator::DkgCoordinatorInterface;
+use crate::error::{Error, Result};
 use fastcrypto::groups::bls12381::{G1Element, G2Element};
 use fastcrypto_tbls::dkg::{Output, Party};
 use fastcrypto_tbls::ecies::{PrivateKey, PublicKey};
@@ -32,17 +32,17 @@ impl Node {
         }
     }
 
-    pub fn dkg<BB: BulletinBoard>(
+    pub async fn dkg<BB: DkgCoordinatorInterface>(
         &mut self,
         bulletin_board: &mut BB,
         random_oracle: RandomOracle,
     ) -> Result<()> {
-        self.threshold = Some(bulletin_board.fetch_threshold()?);
+        self.threshold = Some(bulletin_board.fetch_threshold().await?);
         if self.threshold.unwrap() < 2 {
-            return Err(Error::InsufficientThreshold)
+            return Err(Error::InsufficientThreshold);
         }
 
-        self.dkg_nodes = Some(bulletin_board.fetch_nodes()?);
+        self.dkg_nodes = Some(bulletin_board.fetch_nodes().await?);
 
         self.dkg_party = Some(
             Party::<G2Element, G2Element>::new(
@@ -51,7 +51,8 @@ impl Node {
                 self.threshold.unwrap(),
                 random_oracle.clone(),
                 &mut thread_rng(),
-            ).unwrap()
+            )
+            .unwrap(),
         );
 
         let message = self
@@ -60,9 +61,9 @@ impl Node {
             .unwrap()
             .create_message(&mut thread_rng())
             .unwrap();
-        bulletin_board.post_message(message.clone())?;
+        bulletin_board.post_message(message.clone()).await?;
 
-        let all_messages = bulletin_board.fetch_messages().unwrap();
+        let all_messages = bulletin_board.fetch_messages().await?;
         let processed_messages = &all_messages
             .iter()
             .map(|m| {
@@ -80,9 +81,9 @@ impl Node {
             .unwrap()
             .merge(processed_messages)
             .unwrap();
-        bulletin_board.post_confirmation(confirmation)?;
+        bulletin_board.post_confirmation(confirmation).await?;
 
-        let all_confirmations = bulletin_board.fetch_confirmations().unwrap();
+        let all_confirmations = bulletin_board.fetch_confirmations().await?;
 
         self.dkg_output = Some(
             self.dkg_party
@@ -121,6 +122,8 @@ impl Node {
 
 #[cfg(test)]
 mod test {
+    use crate::bulletin_board::TestBulletinBoard;
+
     use super::*;
 
     fn create_test_key_pair() -> (PrivateKey<G2Element>, PublicKey<G2Element>) {
@@ -131,8 +134,8 @@ mod test {
         (private_key, public_key)
     }
 
-    #[test]
-    fn dkg() {
+    #[tokio::test]
+    async fn dkg() {
         let (private_key_1, public_key_1) = create_test_key_pair();
         let (_, public_key_2) = create_test_key_pair();
         let mut node = Node::new(private_key_1);
@@ -142,11 +145,11 @@ mod test {
             vec![(public_key_1, 4 as u16), (public_key_2, 2 as u16)],
             2 as u16,
         );
-        assert!(node.dkg(&mut bulletin_board, random_oracle).is_ok());
+        assert!(node.dkg(&mut bulletin_board, random_oracle).await.is_ok());
     }
 
-    #[test]
-    fn insufficient_threshold() {
+    #[tokio::test]
+    async fn insufficient_threshold() {
         let (private_key_1, public_key_1) = create_test_key_pair();
         let (_, public_key_2) = create_test_key_pair();
         let mut node = Node::new(private_key_1);
@@ -156,11 +159,14 @@ mod test {
             vec![(public_key_1, 4 as u16), (public_key_2, 2 as u16)],
             1 as u16,
         );
-        assert_eq!(node.dkg(&mut bulletin_board, random_oracle), Err(Error::InsufficientThreshold));
+        assert_eq!(
+            node.dkg(&mut bulletin_board, random_oracle).await,
+            Err(Error::InsufficientThreshold)
+        );
     }
 
-    #[test]
-    fn threshold_signing() {
+    #[tokio::test]
+    async fn threshold_signing() {
         let (private_key_1, public_key_1) = create_test_key_pair();
         let (_, public_key_2) = create_test_key_pair();
         let mut node = Node::new(private_key_1);
@@ -170,7 +176,7 @@ mod test {
             vec![(public_key_1, 4 as u16), (public_key_2, 2 as u16)],
             2 as u16,
         );
-        node.dkg(&mut bulletin_board, random_oracle).unwrap();
+        node.dkg(&mut bulletin_board, random_oracle).await.unwrap();
 
         // Use the shares to sign the message.
         const MSG: [u8; 4] = [1, 2, 3, 4];

@@ -1,12 +1,7 @@
-chain_cfg:
-  denom: "uosmo"
-  prefix: "osmo"
-  chain_id: "osmo-test-5"
-  grpc_endpoint: "http://grpc.testnet.osmosis.zone:9090"
-  gas_price: 0.5
-  gas_adjustment: 1.3
-  derivation_path: "m/44'/118'/0'/0/0"
-
-contract_deploy_info:
-  contract:
-    address: osmo1pczrfcdrwqlla5njcntj9tdygaq75grkp8xc8zwdr54wf060nuaqr9lcx0
+denom: "uosmo"
+prefix: "osmo"
+chain_id: "osmo-test-5"
+grpc_endpoint: "http://grpc.testnet.osmosis.zone:9090"
+gas_price: 0.5
+gas_adjustment: 1.3
+derivation_path: "m/44'/118'/0'/0/0"
