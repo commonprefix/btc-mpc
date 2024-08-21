@@ -32,7 +32,7 @@ pub enum SigningResult {
 
 pub struct Peer {
     private_key: PrivateKey<G2Element>,
-    public_key: PublicKey<G2Element>,
+    pub public_key: PublicKey<G2Element>,
     dkg_output: Option<Output<G2Element, G2Element>>,
     dkg_session: Option<DKGSession>,
 }
