@@ -4,7 +4,7 @@ mod state;
 mod utils;
 
 use crate::msg::QueryMsg;
-use bls::Nodes;
+use bls::{Nodes, Phase, Session};
 use cosmwasm_std::{
     entry_point, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response,
     StdError, StdResult,
@@ -12,6 +12,7 @@ use cosmwasm_std::{
 use msg::ExecuteMsg;
 use serde::{Deserialize, Serialize};
 use state::SESSION;
+use utils::{required_confirmations, required_messages};
 
 #[entry_point]
 pub fn instantiate(
@@ -32,7 +33,14 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> StdResult<Response> {
     match msg {
-        ExecuteMsg::CreateSession { session } => {
+        ExecuteMsg::CreateSession { threshold, nodes } => {
+            let session = Session {
+                threshold,
+                nodes: Nodes::new(nodes).unwrap(),
+                messages: vec![],
+                confirmations: vec![],
+                phase: Phase::Phase2,
+            };
             SESSION.save(deps.storage, &Some(session.clone()))?;
 
             Ok(Response::new().add_attribute("action", "create_session"))
@@ -45,7 +53,17 @@ pub fn execute(
             }
 
             let mut session = session.unwrap();
+            let is_duplicate = session.messages.iter().any(|m| m.sender == message.sender);
+            if session.phase < Phase::Phase2 && is_duplicate {
+                return Ok(Response::new());
+            }
+
             session.messages.push(message);
+            if session.messages.len() >= required_messages(session.nodes.nodes.len()) {
+                if session.phase < Phase::Phase3 {
+                    session.phase = Phase::Phase3;
+                }
+            }
 
             SESSION.save(deps.storage, &Some(session))?;
 
@@ -59,7 +77,18 @@ pub fn execute(
             }
 
             let mut session = session.unwrap();
+            let is_duplicate = session
+                .confirmations
+                .iter()
+                .any(|c| c.sender == confirmation.sender);
+            if session.phase < Phase::Phase3 && is_duplicate {
+                return Ok(Response::new());
+            }
+
             session.confirmations.push(confirmation);
+            if session.confirmations.len() >= required_confirmations(session.nodes.nodes.len()) {
+                session.phase = Phase::Phase4;
+            }
 
             SESSION.save(deps.storage, &Some(session))?;
 

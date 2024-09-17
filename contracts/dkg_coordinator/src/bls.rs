@@ -1,14 +1,24 @@
 use core::fmt;
 
 use base64::prelude::*;
+use eyre::{eyre, Result};
 use serde::{
     de::{self, Error, SeqAccess, Visitor},
     ser::SerializeTuple,
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
+pub enum Phase {
+    Phase1,
+    Phase2,
+    Phase3,
+    Phase4,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Session {
+    pub phase: Phase,
     pub threshold: u16,
     pub nodes: Nodes,
     pub messages: Vec<Message>,
@@ -346,7 +356,7 @@ impl<'de> Deserialize<'de> for MultiRecipientEncryption {
 mod tests {
     use crate::bls::{
         Complaint, Confirmation, DLNizk, DdhTupleNizk, G2Element, Message,
-        MultiRecipientEncryption, RecoveryPackage, Scalar, Session,
+        MultiRecipientEncryption, Phase, RecoveryPackage, Scalar, Session,
     };
     use serde_json;
 
@@ -836,6 +846,7 @@ mod tests {
             "confirmations":[]
         }"#.chars().filter(|c| !c.is_whitespace()).collect::<String>();
         let expected_session = Session {
+            phase: Phase::Phase2,
             threshold: 2,
             nodes: Nodes {
                 nodes: vec![
