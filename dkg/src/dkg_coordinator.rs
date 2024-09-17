@@ -66,7 +66,6 @@ impl DkgCoordinator<CosmosEndpoint, Address> {
             .await
             .unwrap();
 
-        println!("Account: {:?}", account.account.sequence);
         account.account.sequence
     }
 }
