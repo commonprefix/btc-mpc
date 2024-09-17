@@ -3,7 +3,7 @@ use cosm_tome::modules::auth::model::Address;
 use cosm_tome::modules::cosmwasm::model::{ExecRequest, ExecResponse};
 use cosm_tome::signing_key::key::SigningKey;
 use fastcrypto::groups::bls12381::G2Element;
-use fastcrypto_tbls::nodes::Nodes;
+use fastcrypto_tbls::nodes::{Node, Nodes};
 use serde_json::json;
 
 type Confirmation = fastcrypto_tbls::dkg::Confirmation<G2Element>;
@@ -22,7 +22,7 @@ pub enum PostResponse {
 }
 
 pub trait DkgCoordinatorInterface {
-    async fn create_session(&self, threshold: u16, nodes: Nodes<G2Element>) -> PostResponse;
+    async fn create_session(&self, threshold: u16, nodes: Vec<Node<G2Element>>) -> PostResponse;
 
     async fn fetch_session(&self) -> Result<Session>;
 
@@ -71,15 +71,11 @@ impl DkgCoordinator<CosmosEndpoint, Address> {
 }
 
 impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
-    async fn create_session(&self, threshold: u16, nodes: Nodes<G2Element>) -> PostResponse {
+    async fn create_session(&self, threshold: u16, nodes: Vec<Node<G2Element>>) -> PostResponse {
         let message = json!({
             "CreateSession": {
-                "session": {
-                    "threshold": threshold,
-                    "nodes": serde_json::to_value(nodes).unwrap(),
-                    "messages": [],
-                    "confirmations": []
-                },
+                "threshold": threshold,
+                "nodes": serde_json::to_value(nodes).unwrap(),
             }
         });
 
@@ -206,7 +202,7 @@ mod test {
     use fastcrypto::groups::bls12381::G2Element;
     use fastcrypto_tbls::{
         ecies::{PrivateKey, PublicKey},
-        nodes::{Node, Nodes},
+        nodes::Node,
     };
     use rand::thread_rng;
     use serial_test::serial;
@@ -245,7 +241,7 @@ mod test {
         (private_key, public_key)
     }
 
-    fn create_nodes() -> Nodes<G2Element> {
+    fn create_nodes() -> Vec<Node<G2Element>> {
         let mut nodes = Vec::new();
         for i in 0..5 {
             let (_, pk) = create_test_key_pair();
@@ -256,7 +252,7 @@ mod test {
             });
         }
 
-        Nodes::<G2Element>::new(nodes).unwrap()
+        nodes
     }
 
     fn testdata() -> (String, String, String) {

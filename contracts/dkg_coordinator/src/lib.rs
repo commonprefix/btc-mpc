@@ -1,9 +1,10 @@
 mod bls;
 mod msg;
 mod state;
+mod utils;
 
 use crate::msg::QueryMsg;
-use bls::Session;
+use bls::Nodes;
 use cosmwasm_std::{
     entry_point, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response,
     StdError, StdResult,

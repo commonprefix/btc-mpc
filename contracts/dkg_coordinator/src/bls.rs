@@ -59,6 +59,59 @@ pub struct Nodes {
     pub nodes_with_nonzero_weight: Vec<u16>,
 }
 
+impl Nodes {
+    const MAX_NODES: usize = 1000;
+
+    pub fn new(nodes: Vec<Node>) -> Result<Self> {
+        let mut nodes = nodes;
+        nodes.sort_by_key(|n| n.id);
+        // Check all ids are consecutive and start from 0
+        if (0..nodes.len()).any(|i| (nodes[i].id as usize) != i) {
+            return Err(eyre!("InvalidInput"));
+        }
+        // Make sure we never overflow in the functions below.
+        if nodes.is_empty() || nodes.len() > Self::MAX_NODES {
+            return Err(eyre!("InvalidInput"));
+        }
+        // Make sure we never overflow in the functions below, as we don't expect to have more than u16::MAX total weight.
+        let total_weight = nodes.iter().map(|n| n.weight as u32).sum::<u32>();
+        if total_weight > u16::MAX as u32 || total_weight == 0 {
+            return Err(eyre!("InvalidInput"));
+        }
+        let total_weight = total_weight as u16;
+
+        // We use the next two to map share ids to party ids.
+        let accumulated_weights = Self::get_accumulated_weights(&nodes);
+        let nodes_with_nonzero_weight = Self::filter_nonzero_weights(&nodes);
+
+        Ok(Self {
+            nodes,
+            total_weight,
+            accumulated_weights,
+            nodes_with_nonzero_weight,
+        })
+    }
+
+    fn get_accumulated_weights(nodes: &[Node]) -> Vec<u16> {
+        nodes
+            .iter()
+            .filter_map(|n| if n.weight > 0 { Some(n.weight) } else { None })
+            .scan(0, |accumulated_weight, weight| {
+                *accumulated_weight += weight;
+                Some(*accumulated_weight)
+            })
+            .collect::<Vec<_>>()
+    }
+
+    fn filter_nonzero_weights(nodes: &[Node]) -> Vec<u16> {
+        nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(i, n)| if n.weight > 0 { Some(i as u16) } else { None })
+            .collect::<Vec<_>>()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Message {
     pub sender: PartyId,
