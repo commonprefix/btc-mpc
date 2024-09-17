@@ -204,7 +204,11 @@ mod test {
         signing_key::key::{Key, SigningKey},
     };
     use fastcrypto::groups::bls12381::G2Element;
-    use fastcrypto_tbls::nodes::Nodes;
+    use fastcrypto_tbls::{
+        ecies::{PrivateKey, PublicKey},
+        nodes::{Node, Nodes},
+    };
+    use rand::thread_rng;
     use serial_test::serial;
 
     type Message = fastcrypto_tbls::dkg_v0::Message<G2Element, G2Element>;
@@ -231,6 +235,28 @@ mod test {
                 .unwrap();
         let key = create_test_key();
         DkgCoordinator::new(endpoint, contract_address, key)
+    }
+
+    fn create_test_key_pair() -> (PrivateKey<G2Element>, PublicKey<G2Element>) {
+        let private_key: PrivateKey<G2Element> = PrivateKey::<G2Element>::new(&mut thread_rng());
+        let public_key: PublicKey<G2Element> =
+            PublicKey::<G2Element>::from_private_key(&private_key);
+
+        (private_key, public_key)
+    }
+
+    fn create_nodes() -> Nodes<G2Element> {
+        let mut nodes = Vec::new();
+        for i in 0..5 {
+            let (_, pk) = create_test_key_pair();
+            nodes.push(Node {
+                id: i,
+                pk: pk,
+                weight: i,
+            });
+        }
+
+        Nodes::<G2Element>::new(nodes).unwrap()
     }
 
     fn testdata() -> (String, String, String) {
@@ -260,16 +286,13 @@ mod test {
     async fn test_session_creation() {
         let dkg_coordinator = create_coordinator_instance();
 
-        let (_, _, nodes) = testdata();
-        let nodes_parsed: Nodes<G2Element> = serde_json::from_str(&nodes).unwrap();
+        let nodes = create_nodes();
 
         // create new session with no nodes
-        dkg_coordinator
-            .create_session(2, nodes_parsed.clone())
-            .await;
+        dkg_coordinator.create_session(2, nodes.clone()).await;
         let expected_session = Session {
             threshold: 2,
-            nodes: nodes_parsed.clone(),
+            nodes: nodes.clone(),
             messages: vec![],
             confirmations: vec![],
         };
@@ -277,7 +300,7 @@ mod test {
         assert_eq!(expected_session, actual_session);
 
         let actual_nodes = dkg_coordinator.fetch_nodes().await.unwrap();
-        assert_eq!(nodes_parsed, actual_nodes);
+        assert_eq!(nodes, actual_nodes);
     }
 
     #[tokio::test]
