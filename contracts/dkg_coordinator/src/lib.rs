@@ -6,7 +6,7 @@ use crate::msg::QueryMsg;
 use bls::Session;
 use cosmwasm_std::{
     entry_point, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response,
-    StdResult,
+    StdError, StdResult,
 };
 use msg::ExecuteMsg;
 use serde::{Deserialize, Serialize};
@@ -33,9 +33,38 @@ pub fn execute(
     match msg {
         ExecuteMsg::CreateSession { session } => {
             SESSION.save(deps.storage, &Some(session.clone()))?;
+
+            Ok(Response::new().add_attribute("action", "create_session"))
+        }
+        ExecuteMsg::PostMessage { message } => {
+            let session = SESSION.load(deps.storage)?;
+
+            if session.is_none() {
+                return Err(StdError::generic_err("Session not initialized".to_string()));
+            }
+
+            let mut session = session.unwrap();
+            session.messages.push(message);
+
+            SESSION.save(deps.storage, &Some(session))?;
+
+            Ok(Response::new().add_attribute("action", "post_message"))
+        }
+        ExecuteMsg::PostConfirmation { confirmation } => {
+            let session = SESSION.load(deps.storage)?;
+
+            if session.is_none() {
+                return Err(StdError::generic_err("Session not initialized".to_string()));
+            }
+
+            let mut session = session.unwrap();
+            session.confirmations.push(confirmation);
+
+            SESSION.save(deps.storage, &Some(session))?;
+
+            Ok(Response::new().add_attribute("action", "post_confirmation"))
         }
     }
-    Ok(Response::new())
 }
 
 #[derive(Serialize, Deserialize)]
