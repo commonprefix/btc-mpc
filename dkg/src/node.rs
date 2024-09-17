@@ -61,7 +61,7 @@ impl Node {
             .unwrap()
             .create_message(&mut thread_rng())
             .unwrap();
-        bulletin_board.post_message(message.clone()).await?;
+        bulletin_board.post_message(message.clone()).await;
 
         let all_messages = bulletin_board.fetch_messages().await?;
         let processed_messages = &all_messages
@@ -81,7 +81,7 @@ impl Node {
             .unwrap()
             .merge(processed_messages)
             .unwrap();
-        bulletin_board.post_confirmation(confirmation).await?;
+        bulletin_board.post_confirmation(confirmation).await;
 
         let all_confirmations = bulletin_board.fetch_confirmations().await?;
 
