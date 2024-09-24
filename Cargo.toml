@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["dkg", "contracts/dkg_coordinator"]
+members = ["dkg", "contracts/dkg_coordinator", "contracts/sig_coordinator"]
 
 [profile.release]
 codegen-units = 1
