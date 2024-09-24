@@ -1,3 +1,4 @@
+mod bls;
 mod execute;
 mod msg;
 mod state;
