@@ -30,7 +30,7 @@ pub struct TestBulletinBoard {
 }
 
 impl DkgCoordinatorInterface for TestBulletinBoard {
-    async fn create_session(&self, _: u16, _: Nodes<G2Element>) -> PostResponse {
+    async fn create_session(&self, _: u16, _: Vec<Node<G2Element>>) -> PostResponse {
         PostResponse::GenericResponse(String::from("CreateSession"))
     }
 

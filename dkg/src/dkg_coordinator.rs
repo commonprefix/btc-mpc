@@ -202,7 +202,7 @@ mod test {
     use fastcrypto::groups::bls12381::G2Element;
     use fastcrypto_tbls::{
         ecies::{PrivateKey, PublicKey},
-        nodes::Node,
+        nodes::{Node, Nodes},
     };
     use rand::thread_rng;
     use serial_test::serial;
@@ -226,7 +226,7 @@ mod test {
     fn create_coordinator_instance() -> DkgCoordinator<CosmosEndpoint, Address> {
         let endpoint = CosmosEndpoint::new("./config/osmosis_testnet.yaml");
         let contract_address: Address =
-            "osmo19apqqz5mtmxhqsqgglj5w07f8nplzhf46j6hxkh04t5ggd6exkcs5273dl"
+            "osmo10nwvtnxvp042g37hdrm5jpfzmf2z0rgmfnh5dehszallnvdxj39sxzmf6n"
                 .parse()
                 .unwrap();
         let key = create_test_key();
@@ -282,10 +282,11 @@ mod test {
     async fn test_session_creation() {
         let dkg_coordinator = create_coordinator_instance();
 
-        let nodes = create_nodes();
+        let nodes_vec = create_nodes();
+        let nodes = Nodes::new(nodes_vec.clone()).unwrap();
 
         // create new session with no nodes
-        dkg_coordinator.create_session(2, nodes.clone()).await;
+        dkg_coordinator.create_session(2, nodes_vec.clone()).await;
         let expected_session = Session {
             threshold: 2,
             nodes: nodes.clone(),

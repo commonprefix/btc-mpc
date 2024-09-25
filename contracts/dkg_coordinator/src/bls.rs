@@ -813,6 +813,7 @@ mod tests {
     #[test]
     fn session_serialization() {
         let expected_json = r#"{
+            "phase": "Phase2",
             "threshold":2,
             "nodes": {
                 "nodes":[
