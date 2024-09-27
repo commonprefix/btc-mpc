@@ -13,6 +13,6 @@ pub enum ExecuteMsg {
     CreateSession {},
     PostPartialSig {
         session_id: String,
-        partial_sig: PartialSignature,
+        partial_sig: Vec<PartialSignature>,
     },
 }

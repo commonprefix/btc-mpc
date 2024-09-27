@@ -58,7 +58,7 @@ pub fn execute(
             let mut sessions = SESSION.load(deps.storage)?;
 
             let session = sessions.get_mut(&session_id).unwrap();
-            session.sigs.push(partial_sig);
+            session.sigs.extend(partial_sig);
 
             SESSION.save(deps.storage, &sessions)?;
 
