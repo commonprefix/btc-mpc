@@ -17,3 +17,13 @@ pub enum DKGError {
     #[error("Confirmation posting phase has been completed")]
     ConfirmationPostingCompleted,
 }
+
+#[derive(Error, Debug, PartialEq)]
+pub enum SigningError {
+    #[error("Error creating signing session")]
+    ErrorCreatingSession,
+    #[error("Error fetching session")]
+    ErrorFetchingSession,
+    #[error("Error posting partial signatures")]
+    ErrorPostingPartialSignatures,
+}
