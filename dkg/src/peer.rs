@@ -1,13 +1,16 @@
 use crate::dkg_coordinator::{DKGPhase, DKGSession, DkgCoordinatorInterface, Message};
 use crate::error::{DKGError, SigningError};
+use crate::signing_coordinator::{SigningCoordinatorInterface, SigningSession};
 use fastcrypto::bls12381::min_sig::{BLS12381PrivateKey, BLS12381PublicKey};
-use fastcrypto::groups::bls12381::G2Element;
+use fastcrypto::groups::bls12381::{G1Element, G2Element};
 use fastcrypto::serde_helpers::ToFromByteArray;
 use fastcrypto::traits::{Signer, ToFromBytes};
 use fastcrypto_tbls::dkg::{Confirmation, Output, Party};
 use fastcrypto_tbls::dkg_v0::UsedProcessedMessages;
 use fastcrypto_tbls::ecies::{PrivateKey, PublicKey};
 use fastcrypto_tbls::random_oracle::RandomOracle;
+use fastcrypto_tbls::tbls::ThresholdBls;
+use fastcrypto_tbls::types::{IndexedValue, ThresholdBls12381MinSig};
 use rand::thread_rng;
 
 #[derive(Debug, PartialEq)]
@@ -19,6 +22,11 @@ pub enum DKGResult {
     ConfirmationPosted,
     OutputAlreadyConstructed,
     OutputConstructed,
+}
+
+pub enum SigningResult {
+    NoOutstandingSession,
+    SignedOutstandingSessions,
 }
 
 pub struct Peer {
@@ -265,6 +273,59 @@ impl Peer {
             .as_ref()
             .unwrap()
             .len() as u16)
+    }
+
+    pub async fn fetch_outstanding_signing_sessions<
+        SC: SigningCoordinatorInterface<IndexedValue<G1Element>>,
+    >(
+        &self,
+        signing_coordinator: &SC,
+    ) -> Result<Vec<SigningSession<G1Element>>, SigningError> {
+        todo!()
+    }
+
+    pub fn partial_sign(
+        &self,
+        message: &[u8],
+    ) -> Result<Vec<IndexedValue<G1Element>>, SigningError> {
+        if self.dkg_output.is_none() {
+            return Err(SigningError::DKGPending);
+        }
+
+        Ok(ThresholdBls12381MinSig::partial_sign_batch(
+            self.dkg_output
+                .as_ref()
+                .unwrap()
+                .shares
+                .as_ref()
+                .unwrap()
+                .iter(),
+            message,
+        ))
+    }
+
+    pub async fn signing_step<SC: SigningCoordinatorInterface<IndexedValue<G1Element>>>(
+        &mut self,
+        signing_coordinator: &SC,
+    ) -> Result<SigningResult, SigningError> {
+        let outstanding_sessions = self
+            .fetch_outstanding_signing_sessions(signing_coordinator)
+            .await?;
+        if outstanding_sessions.is_empty() {
+            log::info!("No outstanding signing sessions.");
+            return Ok(SigningResult::NoOutstandingSession);
+        }
+
+        for session in outstanding_sessions {
+            let partial_signatures = self
+                .partial_sign(&session.payload.to_bytes().unwrap())
+                .unwrap();
+
+            signing_coordinator
+                .post_partial_signatures(session.session_id.clone(), partial_signatures)
+                .await?;
+        }
+        Ok(SigningResult::SignedOutstandingSessions)
     }
 }
 
