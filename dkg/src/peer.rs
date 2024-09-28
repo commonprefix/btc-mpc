@@ -1,5 +1,5 @@
 use crate::dkg_coordinator::{DKGPhase, DKGSession, DkgCoordinatorInterface, Message};
-use crate::error::DKGError;
+use crate::error::{DKGError, SigningError};
 use fastcrypto::bls12381::min_sig::{BLS12381PrivateKey, BLS12381PublicKey};
 use fastcrypto::groups::bls12381::G2Element;
 use fastcrypto::serde_helpers::ToFromByteArray;
@@ -252,9 +252,9 @@ impl Peer {
         }
     }
 
-    pub fn get_weight(&self) -> Result<u16, DKGError> {
+    pub fn get_weight(&self) -> Result<u16, SigningError> {
         if self.dkg_output.is_none() {
-            return Err(DKGError::DKGPending);
+            return Err(SigningError::DKGPending);
         }
 
         Ok(self
