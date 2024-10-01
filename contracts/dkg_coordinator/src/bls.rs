@@ -8,6 +8,8 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
+pub const DST_G1: &[u8] = b"BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_NUL_";
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
 pub enum Phase {
     Phase1,
