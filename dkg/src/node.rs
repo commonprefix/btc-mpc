@@ -1,6 +1,9 @@
 use crate::dkg_coordinator::DkgCoordinatorInterface;
 use crate::error::{Error, Result};
+use fastcrypto::bls12381::min_sig::{BLS12381PrivateKey, BLS12381PublicKey};
 use fastcrypto::groups::bls12381::{G1Element, G2Element};
+use fastcrypto::serde_helpers::ToFromByteArray;
+use fastcrypto::traits::{Signer, ToFromBytes};
 use fastcrypto_tbls::dkg::{Output, Party};
 use fastcrypto_tbls::ecies::{PrivateKey, PublicKey};
 use fastcrypto_tbls::nodes::Nodes;
@@ -61,7 +64,16 @@ impl Node {
             .unwrap()
             .create_message(&mut thread_rng())
             .unwrap();
-        bulletin_board.post_message(message.clone()).await;
+
+        let sk =
+            BLS12381PrivateKey::from_bytes(&self.private_key.as_element().to_byte_array()).unwrap();
+        let public_key = PublicKey::<G2Element>::from_private_key(&self.private_key);
+        let pk = BLS12381PublicKey::from_bytes(&public_key.as_element().to_byte_array()).unwrap();
+        let signature = sk.sign(&serde_json::to_string(&message).unwrap().as_bytes());
+
+        bulletin_board
+            .post_message(message.clone(), signature.sig, pk.pubkey)
+            .await;
 
         let all_messages = bulletin_board.fetch_messages().await?;
         let processed_messages = &all_messages
@@ -81,7 +93,10 @@ impl Node {
             .unwrap()
             .merge(processed_messages)
             .unwrap();
-        bulletin_board.post_confirmation(confirmation).await;
+        let signature = sk.sign(&serde_json::to_string(&confirmation).unwrap().as_bytes());
+        bulletin_board
+            .post_confirmation(confirmation, signature.sig, pk.pubkey)
+            .await;
 
         let all_confirmations = bulletin_board.fetch_confirmations().await?;
 
