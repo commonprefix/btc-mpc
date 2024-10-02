@@ -260,7 +260,7 @@ mod test {
     fn create_coordinator_instance() -> DkgCoordinator<CosmosEndpoint, Address> {
         let endpoint = CosmosEndpoint::new("./config/osmosis_testnet.yaml");
         let contract_address: Address =
-            "osmo1huxjrxx265emhsvpnh4ctqhdzacrldf4metwzmmmyhhmvzvs6j4ql2rltm"
+            "osmo13kps8f4xw8em978ysjgksqh38qgvr6x9yk9ey7694waflnhft0wsmj5skm"
                 .parse()
                 .unwrap();
         let key = create_test_key();
