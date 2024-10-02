@@ -3,9 +3,10 @@ pub mod execute {
     use cosmwasm_std::{DepsMut, Response, StdError, StdResult};
     use thiserror::Error;
 
-    use crate::{
+    use crate::state::SESSION;
+
+    use primitives::{
         bls::{Confirmation, Message, Node, Nodes, Phase, Session},
-        state::SESSION,
         utils::{calculate_total_weight, filter_known_pk, verify_signature, HasSender},
     };
 

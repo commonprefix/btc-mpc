@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::bls::{Confirmation, Message, Node};
+use primitives::bls::{Confirmation, Message, Node};
 
 #[derive(Serialize, Deserialize)]
 pub enum QueryMsg {

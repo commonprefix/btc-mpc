@@ -1,18 +1,22 @@
 use serde::{Deserialize, Serialize};
 
-use crate::bls::PartialSignature;
+use primitives::bls::PartialSignature;
 
 #[derive(Serialize, Deserialize)]
 pub enum QueryMsg {
-    Session { session_id: String },
+    SigningSession { session_id: String },
     PartialSigs { session_id: String },
 }
 
 #[derive(Serialize, Deserialize)]
 pub enum ExecuteMsg {
-    CreateSession {},
+    CreateSigningSession {
+        payload: Vec<u8>,
+    },
     PostPartialSig {
         session_id: String,
         partial_sig: PartialSignature,
+        signature: Vec<u8>,
+        pk: Vec<u8>,
     },
 }

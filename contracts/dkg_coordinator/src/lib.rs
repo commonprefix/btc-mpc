@@ -1,17 +1,15 @@
-mod bls;
 mod execute;
 mod msg;
 mod state;
-mod utils;
 
 use crate::msg::QueryMsg;
-use bls::Session;
 use cosmwasm_std::{
     entry_point, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response,
     StdResult,
 };
 use execute::execute::{create_session, post_confirmation, post_message};
 use msg::ExecuteMsg;
+use primitives::bls::Session;
 use serde::{Deserialize, Serialize};
 use state::SESSION;
 

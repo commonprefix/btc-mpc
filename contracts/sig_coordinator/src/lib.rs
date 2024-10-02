@@ -1,16 +1,18 @@
-mod bls;
+mod execute;
 mod msg;
 mod state;
 
 use std::collections::HashMap;
 
 use crate::msg::QueryMsg;
-use bls::Session;
+use blst::min_sig::PublicKey;
 use cosmwasm_std::{
     entry_point, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response,
     StdResult,
 };
+use execute::execute::post_partial_sig;
 use msg::ExecuteMsg;
+use primitives::{bls::SigningSession, utils::verify_signature};
 use state::{SESSION, SESSION_COUNTER};
 
 #[entry_point]
@@ -33,13 +35,14 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> StdResult<Response> {
     match msg {
-        ExecuteMsg::CreateSession {} => {
+        ExecuteMsg::CreateSigningSession { payload } => {
             let mut counter = SESSION_COUNTER.load(deps.storage)?;
             counter += 1;
             let session_id = counter.to_string();
-            let session = Session {
+            let session = SigningSession {
                 session_id: session_id.clone(),
                 sigs: vec![],
+                payload,
             };
 
             let mut sessions = SESSION.load(deps.storage)?;
@@ -54,16 +57,9 @@ pub fn execute(
         ExecuteMsg::PostPartialSig {
             session_id,
             partial_sig,
-        } => {
-            let mut sessions = SESSION.load(deps.storage)?;
-
-            let session = sessions.get_mut(&session_id).unwrap();
-            session.sigs.push(partial_sig);
-
-            SESSION.save(deps.storage, &sessions)?;
-
-            Ok(Response::new().add_attribute("action", "post_partial_sig"))
-        }
+            signature,
+            pk,
+        } => post_partial_sig(deps, session_id, partial_sig, signature, pk),
     }
 }
 
@@ -71,7 +67,9 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     let sessions = SESSION.load(deps.storage)?;
     match msg {
-        QueryMsg::Session { session_id } => to_json_binary(&sessions.get(&session_id).unwrap()),
+        QueryMsg::SigningSession { session_id } => {
+            to_json_binary(&sessions.get(&session_id).unwrap())
+        }
         QueryMsg::PartialSigs { session_id } => {
             to_json_binary(&sessions.get(&session_id).unwrap().sigs)
         }
