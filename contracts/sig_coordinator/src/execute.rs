@@ -1,10 +1,13 @@
 pub mod execute {
     use blst::min_sig::{PublicKey, Signature};
     use cosmwasm_std::{DepsMut, Response, StdError, StdResult};
-    use primitives::{bls::PartialSignature, utils::verify_signature};
+    use primitives::{
+        bls::{PartialSignature, SigningSession},
+        utils::verify_signature,
+    };
     use thiserror::Error;
 
-    use crate::state::SIGNING_SESSIONS;
+    use crate::state::{SESSION_COUNTER, SIGNING_SESSIONS};
 
     #[derive(Error, Debug)]
     pub enum ExecuteError {
@@ -24,6 +27,26 @@ pub mod execute {
         fn from(error: ExecuteError) -> Self {
             StdError::generic_err(error.to_string())
         }
+    }
+
+    pub fn create_session(deps: DepsMut, payload: Vec<u8>) -> StdResult<Response> {
+        let mut counter = SESSION_COUNTER.load(deps.storage)?;
+        counter += 1;
+        let session_id = counter.to_string();
+        let session = SigningSession {
+            session_id: session_id.clone(),
+            sigs: vec![],
+            payload,
+        };
+
+        let mut sessions = SIGNING_SESSIONS.load(deps.storage)?;
+        sessions.insert(session_id.clone(), session);
+        SIGNING_SESSIONS.save(deps.storage, &sessions)?;
+        SESSION_COUNTER.save(deps.storage, &counter)?;
+
+        Ok(Response::new()
+            .add_attribute("action", "create_session")
+            .add_attribute("session_id", session_id))
     }
 
     pub fn post_partial_sig(
