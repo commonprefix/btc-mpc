@@ -33,7 +33,7 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> StdResult<Response> {
     match msg {
-        ExecuteMsg::CreateSigningSession { payload } => create_session(deps, payload),
+        ExecuteMsg::CreateSigningSession { payload, nodes } => create_session(deps, nodes, payload),
         ExecuteMsg::PostPartialSig {
             session_id,
             partial_sig,

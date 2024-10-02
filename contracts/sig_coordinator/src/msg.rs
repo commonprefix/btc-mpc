@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use primitives::bls::PartialSignature;
+use primitives::bls::{Nodes, PartialSignature};
 
 #[derive(Serialize, Deserialize)]
 pub enum QueryMsg {
@@ -11,6 +11,7 @@ pub enum QueryMsg {
 #[derive(Serialize, Deserialize)]
 pub enum ExecuteMsg {
     CreateSigningSession {
+        nodes: Nodes,
         payload: Vec<u8>,
     },
     PostPartialSig {

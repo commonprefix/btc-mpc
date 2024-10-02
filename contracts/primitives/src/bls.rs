@@ -38,6 +38,7 @@ pub struct Session {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SigningSession {
     pub session_id: String,
+    pub nodes: Nodes,
     pub sigs: Vec<PartialSignature>,
     pub payload: Vec<u8>,
 }
