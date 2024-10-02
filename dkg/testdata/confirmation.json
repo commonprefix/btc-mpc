@@ -1,0 +1,16 @@
+{
+    "sender": 0,
+    "complaints": [
+        {
+            "accused_sender": 1,
+            "proof": {
+                "ephemeral_key": "t3vehme0QT0yB35/Swa1ZdxaNWROPfjcaRcFUhAvw2c2Y0D8gHX39k4RL/jh74z3Eo7PdBOUnkiuJkv/GLBRCaFMc6wxxhj/U0dFu7aj3VZJrFveZxA9eIbP9cvcaY5s",
+                "proof": [
+                    "ggFoEWTlUXaiAel672t9Bbxj/KjuZrQShFdSr11y43VhXW6+lgFXERfYwM+UVwk0AJXa5HmktCCTUuXDUlZzM2Yse8hcicZrQJOhfg+HhASo57iqzRG7UMYbDuQ8cWzl",
+                    "pxZoVD25gIAKaRyj3Pmfq/1fxgyzQrMmUGXYb+dvo+JbBWIDhM5TW/qsoQQss44wFqM1iBAwoOxzprP8K9ScXZViymbwJUd1iTrYDVP8crjTd6rbgxmrMIMjnPACEsPr",
+                    "Qy8RecYdFvrRU4zy5wCZCU2m7SN+Tlv5P6d4ba2EBf0="
+                ]
+            }
+        }
+    ]
+}

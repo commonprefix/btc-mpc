@@ -1,11 +1,14 @@
-use fastcrypto::groups::bls12381::G2Element;
+use fastcrypto::{
+    bls12381::min_sig::{BLS12381PublicKey, BLS12381Signature},
+    groups::bls12381::G2Element,
+};
 use fastcrypto_tbls::{
     ecies::PublicKey,
     nodes::{Node, Nodes},
 };
 use serde::{Deserialize, Serialize};
 
-use crate::dkg_coordinator::DkgCoordinatorInterface;
+use crate::dkg_coordinator::{DkgCoordinatorInterface, PostResponse};
 use crate::error::Result;
 
 type Confirmation = fastcrypto_tbls::dkg::Confirmation<G2Element>;
@@ -14,7 +17,7 @@ type Confirmations = Vec<Confirmation>;
 type Message = fastcrypto_tbls::dkg_v0::Message<G2Element, G2Element>;
 type Messages = Vec<Message>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Session {
     pub threshold: u16,
     pub nodes: Nodes<G2Element>,
@@ -30,6 +33,10 @@ pub struct TestBulletinBoard {
 }
 
 impl DkgCoordinatorInterface for TestBulletinBoard {
+    async fn create_session(&self, _: u16, _: Vec<Node<G2Element>>) -> PostResponse {
+        PostResponse::GenericResponse(String::from("CreateSession"))
+    }
+
     async fn fetch_session(&self) -> Result<Session> {
         Ok(Session {
             threshold: self.threshold,
@@ -48,18 +55,28 @@ impl DkgCoordinatorInterface for TestBulletinBoard {
         // Err(Error::InsufficientThreshold)
     }
 
-    async fn post_message(&mut self, message: Message) -> Result<()> {
+    async fn post_message(
+        &mut self,
+        message: Message,
+        signature: blst::min_sig::Signature,
+        pk: blst::min_sig::PublicKey,
+    ) -> PostResponse {
         self.messages = Some(vec![message.clone()]);
-        Ok(())
+        PostResponse::GenericResponse(String::from("PostMessage"))
     }
 
     async fn fetch_messages(&self) -> Result<Messages> {
         Ok(self.messages.clone().unwrap())
     }
 
-    async fn post_confirmation(&mut self, confirmation: Confirmation) -> Result<()> {
+    async fn post_confirmation(
+        &mut self,
+        confirmation: Confirmation,
+        signature: blst::min_sig::Signature,
+        pk: blst::min_sig::PublicKey,
+    ) -> PostResponse {
         self.confirmations = Some(vec![confirmation.clone()]);
-        Ok(())
+        PostResponse::GenericResponse(String::from("PostConfirmation"))
     }
 
     async fn fetch_confirmations(&self) -> Result<Confirmations> {
