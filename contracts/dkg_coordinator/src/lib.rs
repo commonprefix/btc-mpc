@@ -14,7 +14,7 @@ use msg::ExecuteMsg;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use state::SESSION;
-use utils::{filter_known_pk, required_confirmations, required_messages, verify_signature};
+use utils::{calculate_total_weight, filter_known_pk, verify_signature};
 
 #[entry_point]
 pub fn instantiate(
@@ -82,7 +82,11 @@ pub fn execute(
 
             // Add message to session
             session.messages.push(message);
-            if session.messages.len() >= required_messages(session.nodes.nodes.len()) {
+
+            // Calculate total weight of all messages
+            let total_weight = calculate_total_weight(&session.messages, &session.nodes.nodes);
+
+            if total_weight >= session.threshold.into() {
                 if session.phase < Phase::Phase3 {
                     session.phase = Phase::Phase3;
                 }
@@ -129,7 +133,9 @@ pub fn execute(
 
             // Add confirmation to session
             session.confirmations.push(confirmation);
-            if session.confirmations.len() >= required_confirmations(session.nodes.nodes.len()) {
+            let total_weight = calculate_total_weight(&session.confirmations, &session.nodes.nodes);
+
+            if total_weight >= (2 * session.threshold - 1).into() {
                 session.phase = Phase::Phase4;
             }
 

@@ -4,7 +4,24 @@ use blst::{
 };
 use eyre::{eyre, Result};
 
-use crate::bls::{Node, DST_G1};
+use crate::bls::{Confirmation, Message, Node, PartyId, DST_G1};
+pub trait HasSender {
+    fn get_sender(&self) -> &PartyId;
+}
+
+// Implement the trait for Message
+impl HasSender for Message {
+    fn get_sender(&self) -> &PartyId {
+        &self.sender
+    }
+}
+
+// Implement the trait for Confirmation
+impl HasSender for Confirmation {
+    fn get_sender(&self) -> &PartyId {
+        &self.sender
+    }
+}
 
 fn calculate_f(n: usize) -> usize {
     let mut f = (n - 1) / 3;
@@ -46,4 +63,17 @@ pub fn filter_known_pk(pk: &PublicKey, nodes: &Vec<Node>) -> Result<()> {
     }
 
     Err(eyre!("Unknown public key"))
+}
+
+pub fn calculate_total_weight<T: HasSender>(items: &[T], nodes: &[Node]) -> u64 {
+    items
+        .iter()
+        .map(|item| {
+            nodes
+                .iter()
+                .find(|node| node.id == *item.get_sender())
+                .map(|node| node.weight as u64)
+                .unwrap_or(0)
+        })
+        .sum()
 }
