@@ -4,7 +4,7 @@ use primitives::bls::{Confirmation, Message, Node};
 
 #[derive(Serialize, Deserialize)]
 pub enum QueryMsg {
-    Session {},
+    DKGSession {},
     Nodes {},
     Threshold {},
     Messages {},

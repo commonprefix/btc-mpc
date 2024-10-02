@@ -1,5 +1,5 @@
 use cw_storage_plus::Item;
 
-use primitives::bls::Session;
+use primitives::bls::DKGSession;
 
-pub const SESSION: Item<Option<Session>> = Item::new("session");
+pub const DKG_SESSION: Item<Option<DKGSession>> = Item::new("session");

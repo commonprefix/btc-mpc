@@ -27,7 +27,7 @@ pub struct PartialSignature {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Session {
+pub struct DKGSession {
     pub phase: Phase,
     pub threshold: u16,
     pub nodes: Nodes,

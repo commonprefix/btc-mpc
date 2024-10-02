@@ -3,10 +3,10 @@ pub mod execute {
     use cosmwasm_std::{DepsMut, Response, StdError, StdResult};
     use thiserror::Error;
 
-    use crate::state::SESSION;
+    use crate::state::DKG_SESSION;
 
     use primitives::{
-        bls::{Confirmation, Message, Node, Nodes, Phase, Session},
+        bls::{Confirmation, DKGSession, Message, Node, Nodes, Phase},
         utils::{calculate_total_weight, filter_known_pk, verify_signature, HasSender},
     };
 
@@ -42,9 +42,9 @@ pub mod execute {
         signature: &[u8],
         pk: &[u8],
         item_type: &str,
-    ) -> Result<Session, ExecuteError> {
+    ) -> Result<DKGSession, ExecuteError> {
         // Check if session exists
-        let session = SESSION.load(deps.storage)?;
+        let session = DKG_SESSION.load(deps.storage)?;
 
         if session.is_none() {
             return Err(ExecuteError::SessionNotInitialized);
@@ -95,7 +95,7 @@ pub mod execute {
         }
     }
 
-    fn update_phase(session: &mut Session) -> StdResult<()> {
+    fn update_phase(session: &mut DKGSession) -> StdResult<()> {
         let message_weight = calculate_total_weight(&session.messages, &session.nodes.nodes);
         let confirmation_weight =
             calculate_total_weight(&session.confirmations, &session.nodes.nodes);
@@ -114,14 +114,14 @@ pub mod execute {
     }
 
     pub fn create_session(deps: DepsMut, threshold: u16, nodes: Vec<Node>) -> StdResult<Response> {
-        let session = Session {
+        let session = DKGSession {
             threshold,
             nodes: Nodes::new(nodes).unwrap(),
             messages: vec![],
             confirmations: vec![],
             phase: Phase::Phase2,
         };
-        SESSION.save(deps.storage, &Some(session.clone()))?;
+        DKG_SESSION.save(deps.storage, &Some(session.clone()))?;
 
         Ok(Response::new().add_attribute("action", "create_session"))
     }
@@ -145,7 +145,7 @@ pub mod execute {
 
         update_phase(&mut session)?;
 
-        SESSION.save(deps.storage, &Some(session))?;
+        DKG_SESSION.save(deps.storage, &Some(session))?;
 
         Ok(Response::new().add_attribute("action", "post_message"))
     }
@@ -170,7 +170,7 @@ pub mod execute {
 
         update_phase(&mut session)?;
 
-        SESSION.save(deps.storage, &Some(session))?;
+        DKG_SESSION.save(deps.storage, &Some(session))?;
 
         Ok(Response::new().add_attribute("action", "post_confirmation"))
     }
