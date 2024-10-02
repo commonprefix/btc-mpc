@@ -1125,6 +1125,7 @@ dependencies = [
  "eyre",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]

@@ -46,10 +46,7 @@ pub fn verify_signature(pk: &PublicKey, signature: &Signature, message: &[u8]) -
     let verification_result = signature.verify(true, message, &DST_G1, &[], &pk, false);
 
     if verification_result != BLST_ERROR::BLST_SUCCESS {
-        return Err(eyre!(format!(
-            "Invalid signature: {:?}",
-            verification_result
-        )));
+        return Err(eyre!(format!("{:?}", verification_result)));
     }
     Ok(())
 }
