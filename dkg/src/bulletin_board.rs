@@ -1,4 +1,7 @@
-use fastcrypto::groups::bls12381::G2Element;
+use fastcrypto::{
+    bls12381::min_sig::{BLS12381PublicKey, BLS12381Signature},
+    groups::bls12381::G2Element,
+};
 use fastcrypto_tbls::{
     ecies::PublicKey,
     nodes::{Node, Nodes},
@@ -52,7 +55,12 @@ impl DkgCoordinatorInterface for TestBulletinBoard {
         // Err(Error::InsufficientThreshold)
     }
 
-    async fn post_message(&mut self, message: Message) -> PostResponse {
+    async fn post_message(
+        &mut self,
+        message: Message,
+        signature: blst::min_sig::Signature,
+        pk: blst::min_sig::PublicKey,
+    ) -> PostResponse {
         self.messages = Some(vec![message.clone()]);
         PostResponse::GenericResponse(String::from("PostMessage"))
     }
@@ -61,7 +69,12 @@ impl DkgCoordinatorInterface for TestBulletinBoard {
         Ok(self.messages.clone().unwrap())
     }
 
-    async fn post_confirmation(&mut self, confirmation: Confirmation) -> PostResponse {
+    async fn post_confirmation(
+        &mut self,
+        confirmation: Confirmation,
+        signature: blst::min_sig::Signature,
+        pk: blst::min_sig::PublicKey,
+    ) -> PostResponse {
         self.confirmations = Some(vec![confirmation.clone()]);
         PostResponse::GenericResponse(String::from("PostConfirmation"))
     }

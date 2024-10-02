@@ -1,18 +1,19 @@
 mod bls;
+mod execute;
 mod msg;
 mod state;
 mod utils;
 
 use crate::msg::QueryMsg;
-use bls::{Nodes, Phase, Session};
+use bls::Session;
 use cosmwasm_std::{
     entry_point, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response,
-    StdError, StdResult,
+    StdResult,
 };
+use execute::execute::{create_session, post_confirmation, post_message};
 use msg::ExecuteMsg;
 use serde::{Deserialize, Serialize};
 use state::SESSION;
-use utils::{required_confirmations, required_messages};
 
 #[entry_point]
 pub fn instantiate(
@@ -33,67 +34,17 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> StdResult<Response> {
     match msg {
-        ExecuteMsg::CreateSession { threshold, nodes } => {
-            let session = Session {
-                threshold,
-                nodes: Nodes::new(nodes).unwrap(),
-                messages: vec![],
-                confirmations: vec![],
-                phase: Phase::Phase2,
-            };
-            SESSION.save(deps.storage, &Some(session.clone()))?;
-
-            Ok(Response::new().add_attribute("action", "create_session"))
-        }
-        ExecuteMsg::PostMessage { message } => {
-            let session = SESSION.load(deps.storage)?;
-
-            if session.is_none() {
-                return Err(StdError::generic_err("Session not initialized".to_string()));
-            }
-
-            let mut session = session.unwrap();
-            let is_duplicate = session.messages.iter().any(|m| m.sender == message.sender);
-            if session.phase < Phase::Phase2 && is_duplicate {
-                return Ok(Response::new());
-            }
-
-            session.messages.push(message);
-            if session.messages.len() >= required_messages(session.nodes.nodes.len()) {
-                if session.phase < Phase::Phase3 {
-                    session.phase = Phase::Phase3;
-                }
-            }
-
-            SESSION.save(deps.storage, &Some(session))?;
-
-            Ok(Response::new().add_attribute("action", "post_message"))
-        }
-        ExecuteMsg::PostConfirmation { confirmation } => {
-            let session = SESSION.load(deps.storage)?;
-
-            if session.is_none() {
-                return Err(StdError::generic_err("Session not initialized".to_string()));
-            }
-
-            let mut session = session.unwrap();
-            let is_duplicate = session
-                .confirmations
-                .iter()
-                .any(|c| c.sender == confirmation.sender);
-            if session.phase < Phase::Phase3 && is_duplicate {
-                return Ok(Response::new());
-            }
-
-            session.confirmations.push(confirmation);
-            if session.confirmations.len() >= required_confirmations(session.nodes.nodes.len()) {
-                session.phase = Phase::Phase4;
-            }
-
-            SESSION.save(deps.storage, &Some(session))?;
-
-            Ok(Response::new().add_attribute("action", "post_confirmation"))
-        }
+        ExecuteMsg::CreateSession { threshold, nodes } => create_session(deps, threshold, nodes),
+        ExecuteMsg::PostMessage {
+            message,
+            signature,
+            pk,
+        } => post_message(deps, message, signature, pk),
+        ExecuteMsg::PostConfirmation {
+            confirmation,
+            signature,
+            pk,
+        } => post_confirmation(deps, confirmation, signature, pk),
     }
 }
 
