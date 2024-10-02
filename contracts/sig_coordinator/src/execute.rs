@@ -1,4 +1,6 @@
 pub mod execute {
+    use std::collections::HashMap;
+
     use blst::min_sig::{PublicKey, Signature};
     use cosmwasm_std::{DepsMut, Response, StdError, StdResult};
     use primitives::{
@@ -36,7 +38,7 @@ pub mod execute {
         let session = SigningSession {
             session_id: session_id.clone(),
             nodes: nodes.clone(),
-            sigs: vec![],
+            sigs: HashMap::new(),
             payload,
         };
 
@@ -65,7 +67,7 @@ pub mod execute {
             .ok_or(ExecuteError::SessionNotInitialized)?;
         let pubkey = PublicKey::from_bytes(&pk).map_err(|_| ExecuteError::InvalidPublicKey)?;
 
-        filter_known_pk(&pubkey, &session.nodes.nodes)
+        let node = filter_known_pk(&pubkey, &session.nodes.nodes)
             .map_err(|_e| ExecuteError::UnknownPublicKey)?;
 
         verify_signature(
@@ -76,7 +78,9 @@ pub mod execute {
         )
         .map_err(|e| ExecuteError::InvalidSignature(e.to_string()))?;
 
-        session.sigs.push(partial_sig);
+        session
+            .sigs
+            .insert((node.id, partial_sig.index), partial_sig);
         SIGNING_SESSIONS.save(deps.storage, &sessions)?;
 
         Ok(Response::new().add_attribute("action", "post_partial_sig"))

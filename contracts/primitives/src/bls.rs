@@ -1,4 +1,5 @@
 use core::fmt;
+use std::collections::HashMap;
 
 use base64::prelude::*;
 use eyre::{eyre, Result};
@@ -39,7 +40,7 @@ pub struct DKGSession {
 pub struct SigningSession {
     pub session_id: String,
     pub nodes: Nodes,
-    pub sigs: Vec<PartialSignature>,
+    pub sigs: HashMap<(PartyId, ShareIndex), PartialSignature>,
     pub payload: Vec<u8>,
 }
 
