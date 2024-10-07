@@ -1,5 +1,4 @@
-pub mod bulletin_board;
-mod dkg_coordinator;
+pub mod dkg_coordinator;
 mod endpoints;
 pub mod error;
-pub mod node;
+pub mod peer;
