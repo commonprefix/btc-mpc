@@ -1,6 +1,7 @@
 use crate::dkg_coordinator::{DKGPhase, DKGSession, DkgCoordinatorInterface, Message};
 use crate::error::{DKGError, SigningError};
 use crate::signing_coordinator::{SigningCoordinatorInterface, SigningSession};
+use cosm_tome::chain::MessageExt;
 use fastcrypto::bls12381::min_sig::{BLS12381PrivateKey, BLS12381PublicKey};
 use fastcrypto::groups::bls12381::{G1Element, G2Element};
 use fastcrypto::serde_helpers::ToFromByteArray;
