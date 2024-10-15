@@ -4,8 +4,8 @@ use thiserror::Error;
 pub enum DKGError {
     #[error("Error creating session")]
     ErrorCreatingSession,
-    #[error("Error fetching session")]
-    ErrorFetchingSession,
+    #[error("Error fetching session: {:?}", e)]
+    ErrorFetchingSession { e: String },
     #[error("Error posting message")]
     ErrorPostingMessage,
     #[error("Error posting confirmation")]

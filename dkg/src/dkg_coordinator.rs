@@ -133,7 +133,7 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
 
     async fn fetch_session(&self) -> Result<Option<DKGSession>, DKGError> {
         let query_msg = json!({
-            "Session": {}
+            "DKGSession": {}
         });
         let res = self
             .endpoint
@@ -143,7 +143,7 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
 
         match res {
             Ok(r) => Ok(r.res.data().unwrap()),
-            Err(_) => Err(DKGError::ErrorFetchingSession),
+            Err(e) => Err(DKGError::ErrorFetchingSession { e: e.to_string() }),
         }
     }
 
