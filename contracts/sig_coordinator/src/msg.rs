@@ -16,7 +16,7 @@ pub enum ExecuteMsg {
     },
     PostPartialSig {
         session_id: String,
-        partial_sig: PartialSignature,
+        partial_sigs: Vec<PartialSignature>,
         signature: Vec<u8>,
         pk: Vec<u8>,
     },
