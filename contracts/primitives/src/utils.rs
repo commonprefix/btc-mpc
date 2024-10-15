@@ -51,11 +51,11 @@ pub fn verify_signature(pk: &PublicKey, signature: &Signature, message: &[u8]) -
     Ok(())
 }
 
-pub fn filter_known_pk(pk: &PublicKey, nodes: &Vec<Node>) -> Result<()> {
+pub fn filter_known_pk(pk: &PublicKey, nodes: &Vec<Node>) -> Result<Node> {
     for node in nodes {
         let candidate_pk = PublicKey::from_bytes(node.pk.bytes.as_slice()).unwrap();
         if candidate_pk == *pk {
-            return Ok(());
+            return Ok(node.clone());
         }
     }
 
