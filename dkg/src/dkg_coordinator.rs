@@ -1,55 +1,59 @@
 use cosm_tome::chain::request::TxOptions;
 use cosm_tome::modules::auth::model::Address;
-use cosm_tome::modules::cosmwasm::model::{ExecRequest, ExecResponse};
+use cosm_tome::modules::cosmwasm::model::ExecRequest;
 use cosm_tome::signing_key::key::SigningKey;
-use fastcrypto::bls12381::min_sig::{BLS12381PublicKey, BLS12381Signature};
 use fastcrypto::groups::bls12381::G2Element;
-use fastcrypto::traits::ToFromBytes;
 use fastcrypto_tbls::nodes::{Node, Nodes};
-use fastcrypto_tbls::types::Signature;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-type Confirmation = fastcrypto_tbls::dkg::Confirmation<G2Element>;
-type Confirmations = Vec<Confirmation>;
+pub type Confirmation = fastcrypto_tbls::dkg::Confirmation<G2Element>;
 
-type Message = fastcrypto_tbls::dkg_v0::Message<G2Element, G2Element>;
-type Messages = Vec<Message>;
+pub type Message = fastcrypto_tbls::dkg_v0::Message<G2Element, G2Element>;
 
-use crate::error::Result;
-use crate::{bulletin_board::Session, endpoints::CosmosEndpoint};
+use crate::endpoints::CosmosEndpoint;
+use crate::error::DKGError;
 
-#[derive(Debug)]
-pub enum PostResponse {
-    CosmosResponse(ExecResponse),
-    GenericResponse(String),
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
+pub enum DKGPhase {
+    Phase1,
+    Phase2,
+    Phase3,
+    Phase4,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct DKGSession {
+    pub phase: DKGPhase,
+    pub threshold: u16,
+    pub nodes: Nodes<G2Element>,
+    pub messages: Vec<Message>,
+    pub confirmations: Vec<Confirmation>,
+}
+
+#[allow(async_fn_in_trait)]
 pub trait DkgCoordinatorInterface {
-    async fn create_session(&self, threshold: u16, nodes: Vec<Node<G2Element>>) -> PostResponse;
+    async fn create_session(
+        &self,
+        threshold: u16,
+        nodes: Vec<Node<G2Element>>,
+    ) -> Result<DKGSession, DKGError>;
 
-    async fn fetch_session(&self) -> Result<Session>;
-
-    async fn fetch_nodes(&self) -> Result<Nodes<G2Element>>;
-
-    async fn fetch_threshold(&self) -> Result<u16>;
+    async fn fetch_session(&self) -> Result<Option<DKGSession>, DKGError>;
 
     async fn post_message(
-        &mut self,
+        &self,
         message: Message,
         signature: blst::min_sig::Signature,
         pk: blst::min_sig::PublicKey,
-    ) -> PostResponse;
-
-    async fn fetch_messages(&self) -> Result<Messages>;
+    ) -> Result<Message, DKGError>;
 
     async fn post_confirmation(
-        &mut self,
+        &self,
         confirmation: Confirmation,
         signature: blst::min_sig::Signature,
         pk: blst::min_sig::PublicKey,
-    ) -> PostResponse;
-
-    async fn fetch_confirmations(&self) -> Result<Confirmations>;
+    ) -> Result<Confirmation, DKGError>;
 }
 
 pub struct DkgCoordinator<C, A> {
@@ -84,11 +88,15 @@ impl DkgCoordinator<CosmosEndpoint, Address> {
 }
 
 impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
-    async fn create_session(&self, threshold: u16, nodes: Vec<Node<G2Element>>) -> PostResponse {
+    async fn create_session(
+        &self,
+        threshold: u16,
+        nodes: Vec<Node<G2Element>>,
+    ) -> Result<DKGSession, DKGError> {
         let message = json!({
             "CreateSession": {
                 "threshold": threshold,
-                "nodes": serde_json::to_value(nodes).unwrap(),
+                "nodes": serde_json::to_value(nodes.clone()).unwrap(),
             }
         });
 
@@ -105,16 +113,25 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
             sequence: self.get_account_sequence().await.into(),
         };
 
-        PostResponse::CosmosResponse(
-            self.endpoint
-                .client
-                .wasm_execute(request, &self.signing_key, &options)
-                .await
-                .unwrap(),
-        )
+        let res = self
+            .endpoint
+            .client
+            .wasm_execute(request, &self.signing_key, &options)
+            .await;
+
+        match res {
+            Ok(_) => Ok(DKGSession {
+                threshold,
+                nodes: Nodes::new(nodes).unwrap(),
+                messages: vec![],
+                confirmations: vec![],
+                phase: DKGPhase::Phase2,
+            }),
+            Err(_) => Err(DKGError::ErrorCreatingSession),
+        }
     }
 
-    async fn fetch_session(&self) -> Result<Session> {
+    async fn fetch_session(&self) -> Result<Option<DKGSession>, DKGError> {
         let query_msg = json!({
             "Session": {}
         });
@@ -122,30 +139,23 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
             .endpoint
             .client
             .wasm_query(self.contract_address.clone(), &query_msg)
-            .await
-            .unwrap();
-        Ok(res.res.data().unwrap())
-    }
+            .await;
 
-    async fn fetch_nodes(&self) -> Result<Nodes<G2Element>> {
-        let session = self.fetch_session().await;
-        Ok(session.unwrap().nodes)
-    }
-
-    async fn fetch_threshold(&self) -> Result<u16> {
-        let session = self.fetch_session().await;
-        Ok(session.unwrap().threshold)
+        match res {
+            Ok(r) => Ok(r.res.data().unwrap()),
+            Err(_) => Err(DKGError::ErrorFetchingSession),
+        }
     }
 
     async fn post_message(
-        &mut self,
+        &self,
         message: Message,
         signature: blst::min_sig::Signature,
         pk: blst::min_sig::PublicKey,
-    ) -> PostResponse {
+    ) -> Result<Message, DKGError> {
         let execute_message = json!({
             "PostMessage": {
-                "message": serde_json::to_value(message).unwrap(),
+                "message": serde_json::to_value(message.clone()).unwrap(),
                 "pk": pk.serialize().as_slice(),
                 "signature": signature.serialize().as_slice(),
             }
@@ -164,29 +174,27 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
             sequence: self.get_account_sequence().await.into(),
         };
 
-        PostResponse::CosmosResponse(
-            self.endpoint
-                .client
-                .wasm_execute(request, &self.signing_key, &options)
-                .await
-                .unwrap(),
-        )
-    }
+        let res = self
+            .endpoint
+            .client
+            .wasm_execute(request, &self.signing_key, &options)
+            .await;
 
-    async fn fetch_messages(&self) -> Result<Messages> {
-        let session = self.fetch_session().await;
-        Ok(session.unwrap().messages)
+        match res {
+            Ok(_) => Ok(message),
+            Err(_) => Err(DKGError::ErrorPostingMessage),
+        }
     }
 
     async fn post_confirmation(
-        &mut self,
+        &self,
         confirmation: Confirmation,
         signature: blst::min_sig::Signature,
         pk: blst::min_sig::PublicKey,
-    ) -> PostResponse {
+    ) -> Result<Confirmation, DKGError> {
         let execute_message = json!({
             "PostConfirmation": {
-                "confirmation": serde_json::to_value(confirmation).unwrap(),
+                "confirmation": serde_json::to_value(confirmation.clone()).unwrap(),
                 "pk": pk.serialize().as_slice(),
                 "signature": signature.serialize().as_slice(),
             }
@@ -205,18 +213,16 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
             sequence: self.get_account_sequence().await.into(),
         };
 
-        PostResponse::CosmosResponse(
-            self.endpoint
-                .client
-                .wasm_execute(request, &self.signing_key, &options)
-                .await
-                .unwrap(),
-        )
-    }
+        let res = self
+            .endpoint
+            .client
+            .wasm_execute(request, &self.signing_key, &options)
+            .await;
 
-    async fn fetch_confirmations(&self) -> Result<Confirmations> {
-        let session = self.fetch_session().await;
-        Ok(session.unwrap().confirmations)
+        match res {
+            Ok(_) => Ok(confirmation),
+            Err(_) => Err(DKGError::ErrorPostingConfirmation),
+        }
     }
 }
 
@@ -227,7 +233,7 @@ mod test {
         signing_key::key::{Key, SigningKey},
     };
     use fastcrypto::{
-        bls12381::min_sig::{BLS12381KeyPair, BLS12381PrivateKey, BLS12381PublicKey, DST_G1},
+        bls12381::min_sig::{BLS12381PrivateKey, BLS12381PublicKey},
         groups::bls12381::G2Element,
         serde_helpers::ToFromByteArray,
         traits::{Signer, ToFromBytes},
@@ -244,8 +250,9 @@ mod test {
     type Message = fastcrypto_tbls::dkg_v0::Message<G2Element, G2Element>;
 
     use crate::{
-        bulletin_board::Session,
-        dkg_coordinator::{Confirmation, DkgCoordinator, DkgCoordinatorInterface},
+        dkg_coordinator::{
+            Confirmation, DKGPhase, DKGSession, DkgCoordinator, DkgCoordinatorInterface,
+        },
         endpoints::CosmosEndpoint,
     };
 
@@ -368,25 +375,26 @@ mod test {
 
         let (_, nodes_vec, _, nodes) = create_parties(5);
 
-        // create new session with no nodes
-        dkg_coordinator.create_session(2, nodes_vec.clone()).await;
-        let expected_session = Session {
+        assert!(dkg_coordinator
+            .create_session(2, nodes_vec.clone())
+            .await
+            .is_ok());
+        let expected_session = DKGSession {
             threshold: 2,
-            nodes: nodes.clone(),
+            nodes: nodes,
             messages: vec![],
             confirmations: vec![],
+            phase: DKGPhase::Phase2,
         };
-        let actual_session = dkg_coordinator.fetch_session().await.unwrap();
-        assert_eq!(expected_session, actual_session);
-
-        let actual_nodes = dkg_coordinator.fetch_nodes().await.unwrap();
-        assert_eq!(nodes, actual_nodes);
+        let actual_session = dkg_coordinator.fetch_session().await;
+        assert!(actual_session.is_ok());
+        assert_eq!(expected_session, actual_session.unwrap().unwrap());
     }
 
     #[tokio::test]
     #[serial]
     async fn test_message_posting() {
-        let mut dkg_coordinator = create_coordinator_instance();
+        let dkg_coordinator = create_coordinator_instance();
 
         let (keys, nodes_vec, parties, _) = create_parties(5);
         let party = &parties[0];
@@ -400,19 +408,24 @@ mod test {
         let signature = sk.sign(msg_bytes);
 
         // create new session
-        dkg_coordinator.create_session(5, nodes_vec.clone()).await;
+        assert!(dkg_coordinator
+            .create_session(5, nodes_vec.clone())
+            .await
+            .is_ok());
 
         // post message
-        let response_variant = dkg_coordinator
+        assert!(dkg_coordinator
             .post_message(message.clone(), signature.sig, pk.pubkey)
-            .await;
-        let _ = match response_variant {
-            crate::dkg_coordinator::PostResponse::CosmosResponse(res) => res,
-            _ => panic!("unexpected response"),
-        };
+            .await
+            .is_ok());
 
         // verify that the messages was stored
-        let session_messages = dkg_coordinator.fetch_messages().await.unwrap();
+        let session_messages = dkg_coordinator
+            .fetch_session()
+            .await
+            .unwrap()
+            .unwrap()
+            .messages;
         assert_eq!(session_messages.len(), 1);
         assert_eq!(session_messages[0], message);
     }
@@ -420,14 +433,17 @@ mod test {
     #[tokio::test]
     #[serial]
     async fn test_confirmation_posting() {
-        let mut dkg_coordinator = create_coordinator_instance();
+        let dkg_coordinator = create_coordinator_instance();
 
         let (keys, nodes_vec, parties, _) = create_parties(5);
         let messages = create_messages(&parties);
         let confirmations = create_confirmations(&parties, &messages);
 
         // create new session
-        dkg_coordinator.create_session(5, nodes_vec.clone()).await;
+        assert!(dkg_coordinator
+            .create_session(5, nodes_vec.clone())
+            .await
+            .is_ok());
 
         // sign confirmation
         let sk = BLS12381PrivateKey::from_bytes(&keys[0].0.as_element().to_byte_array()).unwrap();
@@ -437,16 +453,18 @@ mod test {
         let signature = sk.sign(msg_bytes);
 
         // post confirmation
-        let response_variant = dkg_coordinator
+        assert!(dkg_coordinator
             .post_confirmation(confirmations[0].clone(), signature.sig, pk.pubkey)
-            .await;
-        let _ = match response_variant {
-            crate::dkg_coordinator::PostResponse::CosmosResponse(res) => res,
-            _ => panic!("unexpected response"),
-        };
+            .await
+            .is_ok());
 
         // verify that the confirmation was stored
-        let session_confirmations = dkg_coordinator.fetch_confirmations().await.unwrap();
+        let session_confirmations = dkg_coordinator
+            .fetch_session()
+            .await
+            .unwrap()
+            .unwrap()
+            .confirmations;
         assert_eq!(session_confirmations.len(), 1);
         assert_eq!(session_confirmations[0], confirmations[0]);
     }
