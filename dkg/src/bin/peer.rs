@@ -102,6 +102,16 @@ async fn main() {
     let dkg_coordinator = dkg_coordinator::DkgCoordinator::new(endpoint, args.dkg_coordinator, key);
     let random_oracle = RandomOracle::new("dkg"); // TODO: What should be the initial prefix?
 
+    if args.init_session {
+        log::info!("Creating new DKG session");
+        let threshold = 3;
+        let nodes = create_parties();
+        dkg_coordinator
+            .create_session(threshold, nodes)
+            .await
+            .unwrap();
+    }
+
     loop {
         match peer.dkg_step(&dkg_coordinator, random_oracle.clone()).await {
             Ok(DKGResult::OutputConstructed) => {
@@ -110,17 +120,6 @@ async fn main() {
             }
             Err(e) => {
                 log::error!("{}", e)
-            }
-            Ok(DKGResult::NoActiveSession) => {
-                if args.init_session {
-                    log::info!("Creating new DKG session");
-                    let threshold = 3;
-                    let nodes = create_parties();
-                    dkg_coordinator
-                        .create_session(threshold, nodes)
-                        .await
-                        .unwrap();
-                }
             }
             _ => (),
         }
