@@ -287,7 +287,7 @@ impl Peer {
 
     pub fn partial_sign(
         &self,
-        message: &[u8],
+        payload: &[u8],
     ) -> Result<Vec<IndexedValue<G1Element>>, SigningError> {
         if self.dkg_output.is_none() {
             return Err(SigningError::DKGPending);
@@ -301,7 +301,7 @@ impl Peer {
                 .as_ref()
                 .unwrap()
                 .iter(),
-            message,
+            payload,
         ))
     }
 
