@@ -1117,6 +1117,8 @@ dependencies = [
  "cosm-tome",
  "fastcrypto",
  "fastcrypto-tbls",
+ "futures",
+ "log",
  "rand",
  "serde",
  "serde_json",
