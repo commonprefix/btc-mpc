@@ -1,6 +1,7 @@
 use clap::Parser;
 use cosm_tome::modules::auth::model::Address;
 use cosm_tome::signing_key::key::{Key, SigningKey};
+use dkg::dkg_coordinator::DkgCoordinatorInterface;
 use dkg::endpoints::CosmosEndpoint;
 use dkg::peer::DKGResult;
 use dkg::{dkg_coordinator, peer::Peer};
@@ -9,7 +10,8 @@ use fastcrypto::{
     groups::{bls12381::G2Element, GroupElement},
     serde_helpers::ToFromByteArray,
 };
-use fastcrypto_tbls::ecies::PrivateKey;
+use fastcrypto_tbls::ecies::{PrivateKey, PublicKey};
+use fastcrypto_tbls::nodes::Node;
 use fastcrypto_tbls::random_oracle::RandomOracle;
 use log;
 use serde_json::error::Error;
@@ -27,6 +29,9 @@ struct Args {
     dkg_coordinator: Address,
     #[arg(long)]
     cosmos_config_path: PathBuf,
+    /// Flag to initialize a new DKG session
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    init_session: bool,
 }
 
 fn parse_private_key(pk: &str) -> Result<[u8; 32], Error> {
@@ -34,6 +39,35 @@ fn parse_private_key(pk: &str) -> Result<[u8; 32], Error> {
     let bytes: [u8; 32] = decoded.try_into().expect("Invalid private_key");
 
     Ok(bytes)
+}
+
+fn create_parties() -> Vec<Node<G2Element>> {
+    let public_keys_hex = vec![
+        "a5a7070a8c12cecefea675e10ddadc921c4443afa8d9cdab95c2cb0d8707ca2c793995b392f3ecded68a895b13065ab7038ddc97989538bdb44129e6000a099bc85cb8236c0b7219f5ef0ec15f3758d84814a3d9521f60f9f80f29a7c9a345c6",
+        "a569e75f1efd390764b4c825ceaf136cd96a0201a4b8fc6d32ca401cb1b5d47a492944441bebe748989704fc4561dda90c44f6e1a2e057c5c40f2e4af062df9e2d46a45db71eaac75b8df0f918a5c86ebd4ff97315dc59586b5b9976f7c7dcc2",
+        "90270663e9ca11269f82877aff962ed727a3a546e1b1d36209e0af34253b56c016ee2cc9661b4e6f137d7dcc47a6023205821de80244621d6c8472d34e5df0861c9a6533b4b4bd46ab29a2961bfa42f0ba37d94cd110f75870ee336d33e23fe9",
+        "b0e64d37fbfde8ba53930ceb5e4f1ca1fa4242c362407cc35f8639b2e9f615e585fb01f90993bc9b5ae204421e502df6153d5ddf16e4a49162bd8ee1e09ced42343c16c15c5e90aafc2dcb662407058f4de05763c2cd69a0ea599e5849c45965",
+        "84e8f9742f79a299e396c031ccad282fc6f47824751cf3e21a1ae051f84d800c63d84b3b869518b22283a56174b36b5f119c1a1ab3bb41634e8b4cf7b8dc15bb4e93c79f1b466ee6d7b25c09475d59a5b82d466fbe2b9d77507595f2ba340052",
+    ];
+    let mut public_keys = Vec::new();
+    for hex in public_keys_hex {
+        let decoded = Hex::decode(hex).expect("Invalid public_key_hex");
+        let element = G2Element::from_byte_array(decoded.as_slice().try_into().unwrap())
+            .expect("Invalid public_key_hex");
+        let public_key = PublicKey::<G2Element>::from(element);
+        public_keys.push(public_key);
+    }
+
+    let mut nodes_vec = Vec::new();
+    for i in 0..5 {
+        nodes_vec.push(Node {
+            id: i,
+            pk: public_keys[i as usize].clone(),
+            weight: i + 1,
+        });
+    }
+
+    nodes_vec
 }
 
 pub struct MyPrivateKey<G: GroupElement>(pub G::ScalarType);
@@ -55,7 +89,7 @@ async fn main() {
     let endpoint = CosmosEndpoint::new(args.cosmos_config_path.to_str().unwrap());
     let key = SigningKey {
         name: "wallet".to_string(),
-        key: Key::Raw(args.private_key.to_vec()),
+        key: Key::Mnemonic("curtain shy attitude prevent lava liar card right clarify among agent harbor grass syrup accident fabric present rice forget miss hotel diagram spring wrong".to_string()),
         derivation_path: "m/44'/118'/0'/0/0".to_string(),
     };
 
@@ -67,6 +101,20 @@ async fn main() {
             Ok(DKGResult::OutputConstructed) => {
                 log::info!("DKG completed");
                 break;
+            }
+            Err(e) => {
+                log::error!("{}", e)
+            }
+            Ok(DKGResult::NoActiveSession) => {
+                if args.init_session {
+                    log::info!("Creating new DKG session");
+                    let threshold = 3;
+                    let nodes = create_parties();
+                    dkg_coordinator
+                        .create_session(threshold, nodes)
+                        .await
+                        .unwrap();
+                }
             }
             _ => (),
         }
