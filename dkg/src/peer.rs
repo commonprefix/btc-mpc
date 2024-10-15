@@ -322,8 +322,25 @@ impl Peer {
                 .partial_sign(&session.payload.to_bytes().unwrap())
                 .unwrap();
 
+            // TODO: DRY
+            let sk = BLS12381PrivateKey::from_bytes(&self.private_key.as_element().to_byte_array())
+                .unwrap();
+            let public_key = PublicKey::<G2Element>::from_private_key(&self.private_key);
+            let pk =
+                BLS12381PublicKey::from_bytes(&public_key.as_element().to_byte_array()).unwrap();
+            let signature = sk.sign(
+                &serde_json::to_string(&partial_signatures)
+                    .unwrap()
+                    .as_bytes(),
+            );
+
             signing_coordinator
-                .post_partial_signatures(session.session_id.clone(), partial_signatures)
+                .post_partial_signatures(
+                    session.session_id.clone(),
+                    partial_signatures,
+                    signature.sig,
+                    pk.pubkey,
+                )
                 .await?;
         }
         Ok(SigningResult::SignedOutstandingSessions)
