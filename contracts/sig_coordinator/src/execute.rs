@@ -52,10 +52,10 @@ pub mod execute {
             .add_attribute("session_id", session_id))
     }
 
-    pub fn post_partial_sig(
+    pub fn post_partial_sigs(
         deps: DepsMut,
         session_id: String,
-        partial_sig: PartialSignature,
+        partial_sigs: Vec<PartialSignature>,
         signature: Vec<u8>,
         pk: Vec<u8>,
     ) -> StdResult<Response> {
@@ -74,13 +74,19 @@ pub mod execute {
             &pubkey,
             &Signature::from_bytes(&signature)
                 .map_err(|e| ExecuteError::InvalidSignature(format!("{:?}", e)))?,
-            &serde_json::to_vec(&partial_sig).unwrap().as_slice(),
+            &serde_json::to_vec(&partial_sigs).unwrap().as_slice(),
         )
         .map_err(|e| ExecuteError::InvalidSignature(e.to_string()))?;
 
-        session
-            .sigs
-            .insert((node.id, partial_sig.index), partial_sig);
+        let node_sigs = session.sigs.get_mut(&node.id);
+        if let Some(sigs) = node_sigs {
+            for partial_sig in partial_sigs {
+                sigs.push(partial_sig);
+            }
+        } else {
+            // TODO: ignore duplicates
+            session.sigs.insert(node.id, partial_sigs);
+        }
         SIGNING_SESSIONS.save(deps.storage, &sessions)?;
 
         Ok(Response::new().add_attribute("action", "post_partial_sig"))

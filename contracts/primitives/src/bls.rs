@@ -40,7 +40,7 @@ pub struct DKGSession {
 pub struct SigningSession {
     pub session_id: String,
     pub nodes: Nodes,
-    pub sigs: HashMap<(PartyId, ShareIndex), PartialSignature>,
+    pub sigs: HashMap<PartyId, Vec<PartialSignature>>,
     pub payload: Vec<u8>,
 }
 
@@ -408,8 +408,8 @@ impl<'de> Deserialize<'de> for MultiRecipientEncryption {
 #[cfg(test)]
 mod tests {
     use crate::bls::{
-        Complaint, Confirmation, DLNizk, DdhTupleNizk, G2Element, Message,
-        MultiRecipientEncryption, Phase, RecoveryPackage, Scalar, Session,
+        Complaint, Confirmation, DKGSession, DLNizk, DdhTupleNizk, G2Element, Message,
+        MultiRecipientEncryption, Phase, RecoveryPackage, Scalar,
     };
     use serde_json;
 
@@ -899,7 +899,7 @@ mod tests {
             "messages":[],
             "confirmations":[]
         }"#.chars().filter(|c| !c.is_whitespace()).collect::<String>();
-        let expected_session = Session {
+        let expected_session = DKGSession {
             phase: Phase::Phase2,
             threshold: 2,
             nodes: Nodes {
@@ -958,7 +958,7 @@ mod tests {
             confirmations: vec![],
         };
 
-        let deserialize: Session = serde_json::from_str(&expected_json).unwrap();
+        let deserialize: DKGSession = serde_json::from_str(&expected_json).unwrap();
         assert_eq!(expected_session, deserialize);
 
         let serialize = serde_json::to_string(&expected_session).unwrap();
