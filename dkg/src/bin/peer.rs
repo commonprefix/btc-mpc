@@ -81,6 +81,109 @@ fn create_parties() -> Vec<Node<G2Element>> {
 
 pub struct MyPrivateKey<G: GroupElement>(pub G::ScalarType);
 
+async fn create_dkg_session(
+    dkg_coordinator: &dkg_coordinator::DkgCoordinator<CosmosEndpoint, Address>,
+) {
+    log::info!("Creating new DKG session");
+    let threshold = 5;
+    let nodes = create_parties();
+    dkg_coordinator
+        .create_session(threshold, nodes)
+        .await
+        .unwrap();
+    log::info!("DKG session created.");
+}
+
+async fn join_dkg_session(
+    peer: &mut Peer,
+    dkg_coordinator: &dkg_coordinator::DkgCoordinator<CosmosEndpoint, Address>,
+    random_oracle: &RandomOracle,
+) {
+    loop {
+        match peer.dkg_step(dkg_coordinator, random_oracle.clone()).await {
+            Ok(DKGResult::OutputConstructed) => {
+                log::info!("DKG completed");
+                break;
+            }
+            Err(e) => {
+                log::error!("{}", e)
+            }
+            _ => (),
+        }
+        std::thread::sleep(Duration::from_secs(5));
+    }
+}
+
+async fn create_signing_session(
+    signing_coordinator: &signing_coordinator::SigningCoordinator<CosmosEndpoint, Address>,
+) {
+    log::info!("Creating new Signing Session");
+    println!("Enter the message to be signed:");
+    let mut payload = String::new();
+    std::io::stdin()
+        .read_line(&mut payload)
+        .expect("Failed to read line");
+    let payload = payload.trim();
+
+    let nodes = Nodes::new(create_parties()).unwrap();
+    let session_id = signing_coordinator
+        .create_session(nodes, payload.as_bytes().to_vec())
+        .await
+        .unwrap();
+    log::info!("Created Signing Session with ID: {}", session_id);
+}
+
+async fn join_signing_session(
+    peer: &mut Peer,
+    signing_coordinator: &signing_coordinator::SigningCoordinator<CosmosEndpoint, Address>,
+) {
+    println!("Enter a session ID for signing:");
+    let mut session_id = String::new();
+    std::io::stdin()
+        .read_line(&mut session_id)
+        .expect("Failed to read line");
+    session_id = session_id.trim().to_string();
+
+    match peer.sign(signing_coordinator, &session_id).await {
+        Ok(SigningResult::SignedOutstandingSessions) => {
+            log::info!("Successfully signed for session {}.", session_id)
+        }
+        Ok(SigningResult::SessionNotFound) => {
+            log::info!("Session {} not found.", session_id)
+        }
+        Err(e) => log::error!("Failed to sign the session: {}", e),
+    }
+}
+
+async fn verify_signing_session(
+    peer: &mut Peer,
+    signing_coordinator: &signing_coordinator::SigningCoordinator<CosmosEndpoint, Address>,
+    random_oracle: &RandomOracle,
+) {
+    println!("Enter a session ID to verify:");
+    let mut session_id = String::new();
+    std::io::stdin()
+        .read_line(&mut session_id)
+        .expect("Failed to read line");
+    session_id = session_id.trim().to_string();
+
+    match peer
+        .verify(random_oracle.clone(), signing_coordinator, &session_id)
+        .await
+    {
+        Ok(VerificationResult::VerifiedSignature) => {
+            log::info!(
+                "Successfully verified signatures for session {}.",
+                session_id
+            )
+        }
+        Ok(VerificationResult::VerificationFailed) => {
+            log::info!("Failed to verify signatures for session {}.", session_id)
+        }
+        Err(e) => log::error!("Failed to verify signatures for session: {}", e),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
@@ -120,86 +223,14 @@ async fn main() {
         let command = command.trim();
         log::info!("Granting wish..");
         match command {
-            "dkg:create-session" => {
-                log::info!("Creating new DKG session");
-                let threshold = 5;
-                let nodes = create_parties();
-                dkg_coordinator
-                    .create_session(threshold, nodes)
-                    .await
-                    .unwrap();
-                log::info!("DKG session created.");
+            "dkg:create-session" => create_dkg_session(&dkg_coordinator).await,
+            "dkg:join-session" => {
+                join_dkg_session(&mut peer, &dkg_coordinator, &random_oracle).await
             }
-            "dkg:join-session" => loop {
-                match peer.dkg_step(&dkg_coordinator, random_oracle.clone()).await {
-                    Ok(DKGResult::OutputConstructed) => {
-                        log::info!("DKG completed");
-                        break;
-                    }
-                    Err(e) => {
-                        log::error!("{}", e)
-                    }
-                    _ => (),
-                }
-                std::thread::sleep(Duration::from_secs(5));
-            },
-            "sign:create-session" => {
-                log::info!("Creating new Signing Session");
-                println!("Enter the message to be signed:");
-                let mut payload = String::new();
-                std::io::stdin()
-                    .read_line(&mut payload)
-                    .expect("Failed to read line");
-                let payload = payload.trim();
-
-                let nodes = Nodes::new(create_parties()).unwrap();
-                let session_id = signing_coordinator
-                    .create_session(nodes, payload.as_bytes().to_vec())
-                    .await
-                    .unwrap();
-                log::info!("Created Signing Session with ID: {}", session_id);
-            }
-            "sign:join-session" => {
-                println!("Enter a session ID for signing:");
-                let mut session_id = String::new();
-                std::io::stdin()
-                    .read_line(&mut session_id)
-                    .expect("Failed to read line");
-                session_id = session_id.trim().to_string();
-
-                match peer.sign(&signing_coordinator, &session_id).await {
-                    Ok(SigningResult::SignedOutstandingSessions) => {
-                        log::info!("Successfully signed for session {}.", session_id)
-                    }
-                    Ok(SigningResult::SessionNotFound) => {
-                        log::info!("Session {} not found.", session_id)
-                    }
-                    Err(e) => log::error!("Failed to sign the session: {}", e),
-                }
-            }
+            "sign:create-session" => create_signing_session(&signing_coordinator).await,
+            "sign:join-session" => join_signing_session(&mut peer, &signing_coordinator).await,
             "sign:verify-session" => {
-                println!("Enter a session ID to verify:");
-                let mut session_id = String::new();
-                std::io::stdin()
-                    .read_line(&mut session_id)
-                    .expect("Failed to read line");
-                session_id = session_id.trim().to_string();
-
-                match peer
-                    .verify(random_oracle.clone(), &signing_coordinator, &session_id)
-                    .await
-                {
-                    Ok(VerificationResult::VerifiedSignature) => {
-                        log::info!(
-                            "Successfully verified signatures for session {}.",
-                            session_id
-                        )
-                    }
-                    Ok(VerificationResult::VerificationFailed) => {
-                        log::info!("Failed to verify signatures for session {}.", session_id)
-                    }
-                    Err(e) => log::error!("Failed to verify signatures for session: {}", e),
-                }
+                verify_signing_session(&mut peer, &signing_coordinator, &random_oracle).await
             }
             _ => log::error!("Genie doesn't know what to do."),
         }
