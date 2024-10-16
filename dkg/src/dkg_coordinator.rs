@@ -182,7 +182,7 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
 
         match res {
             Ok(_) => Ok(message),
-            Err(_) => Err(DKGError::ErrorPostingMessage),
+            Err(e) => Err(DKGError::ErrorPostingMessage { e: e.to_string() }),
         }
     }
 
@@ -221,7 +221,7 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
 
         match res {
             Ok(_) => Ok(confirmation),
-            Err(_) => Err(DKGError::ErrorPostingConfirmation),
+            Err(e) => Err(DKGError::ErrorPostingConfirmation { e: e.to_string() }),
         }
     }
 }

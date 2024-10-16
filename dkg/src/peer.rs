@@ -443,7 +443,9 @@ mod test {
 
             let is_duplicate = session.messages.iter().any(|m| m.sender == message.sender);
             if session.phase < DKGPhase::Phase2 && is_duplicate {
-                return Err(DKGError::ErrorPostingMessage);
+                return Err(DKGError::ErrorPostingMessage {
+                    e: String::from("Message is duplicate or out of phase."),
+                });
             }
 
             session.messages.push(message.clone());
@@ -487,7 +489,9 @@ mod test {
                 .iter()
                 .any(|c| c.sender == confirmation.sender);
             if session.phase < DKGPhase::Phase2 && is_duplicate {
-                return Err(DKGError::ErrorPostingConfirmation);
+                return Err(DKGError::ErrorPostingConfirmation {
+                    e: String::from("Confirmation is duplicate or out of phase."),
+                });
             }
 
             session.confirmations.push(confirmation.clone());
