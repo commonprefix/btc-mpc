@@ -3,6 +3,7 @@ use std::fs;
 use cosm_tome::clients::{client::CosmTome, cosmos_grpc::CosmosgRPC};
 use cosm_tome::config::cfg::ChainConfig;
 
+#[derive(Clone)]
 pub struct CosmosEndpoint {
     pub client: CosmTome<CosmosgRPC>,
 }
