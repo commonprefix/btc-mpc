@@ -27,3 +27,13 @@ pub enum SigningError {
     #[error("Error posting partial signatures")]
     ErrorPostingPartialSignatures,
 }
+
+#[derive(Error, Debug, PartialEq)]
+pub enum VerificationError {
+    #[error("DKG not complete yet")]
+    DKGPending,
+    #[error("Error fetching session")]
+    ErrorFetchingSession,
+    #[error("Failed to aggregate signatures: {}", e)]
+    ErrorAggregatingSignatures { e: String },
+}
