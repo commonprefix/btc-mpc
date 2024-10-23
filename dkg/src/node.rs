@@ -142,8 +142,8 @@ mod test {
 
         let random_oracle = RandomOracle::new("dkg"); // TODO: What should be the initial prefix?
         let mut bulletin_board = TestBulletinBoard::new(
-            vec![(public_key_1, 4 as u16), (public_key_2, 2 as u16)],
-            2 as u16,
+            vec![(public_key_1, 4_u16), (public_key_2, 2_u16)],
+            2_u16,
         );
         assert!(node.dkg(&mut bulletin_board, random_oracle).await.is_ok());
     }
@@ -156,8 +156,8 @@ mod test {
 
         let random_oracle = RandomOracle::new("dkg"); // TODO: What should be the initial prefix?
         let mut bulletin_board = TestBulletinBoard::new(
-            vec![(public_key_1, 4 as u16), (public_key_2, 2 as u16)],
-            1 as u16,
+            vec![(public_key_1, 4_u16), (public_key_2, 2_u16)],
+            1_u16,
         );
         assert_eq!(
             node.dkg(&mut bulletin_board, random_oracle).await,
@@ -173,8 +173,8 @@ mod test {
 
         let random_oracle = RandomOracle::new("dkg"); // TODO: What should be the initial prefix?
         let mut bulletin_board = TestBulletinBoard::new(
-            vec![(public_key_1, 4 as u16), (public_key_2, 2 as u16)],
-            2 as u16,
+            vec![(public_key_1, 4_u16), (public_key_2, 2_u16)],
+            2_u16,
         );
         node.dkg(&mut bulletin_board, random_oracle).await.unwrap();
 
