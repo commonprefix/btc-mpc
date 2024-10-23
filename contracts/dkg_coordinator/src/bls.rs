@@ -88,14 +88,16 @@ impl<'de> Deserialize<'de> for G2Element {
     {
         let s = String::deserialize(deserializer)?;
         let decoded = BASE64_STANDARD.decode(&s).map_err(D::Error::custom)?;
-        if decoded.len() != G2_ELEMENT_BYTE_LENGTH {
-            return Err(D::Error::custom(format!(
-                "Invalid length for G2Element: expected {}, got {}",
-                G2_ELEMENT_BYTE_LENGTH,
-                decoded.len()
-            )));
+        match decoded.len() {
+            G2_ELEMENT_BYTE_LENGTH => Ok(G2Element(decoded)),
+            len => Err(D::Error::custom(
+                format_args!(
+                    "Invalid length for G2Element: expected {}, got {}",
+                    G2_ELEMENT_BYTE_LENGTH, len
+                )
+                .to_string(),
+            )),
         }
-        Ok(G2Element(decoded))
     }
 }
 
@@ -116,14 +118,16 @@ impl<'de> Deserialize<'de> for Scalar {
     {
         let s = String::deserialize(deserializer)?;
         let decoded = BASE64_STANDARD.decode(&s).map_err(D::Error::custom)?;
-        if decoded.len() != SCALAR_LENGTH {
-            return Err(D::Error::custom(format!(
-                "Invalid length for Scalar: expected {}, got {}",
-                SCALAR_LENGTH,
-                decoded.len()
-            )));
+        match decoded.len() {
+            SCALAR_LENGTH => Ok(Scalar(decoded)),
+            len => Err(D::Error::custom(
+                format_args!(
+                    "Invalid length for Scalar: expected {}, got {}",
+                    SCALAR_LENGTH, len
+                )
+                .to_string(),
+            )),
         }
-        Ok(Scalar(decoded))
     }
 }
 
