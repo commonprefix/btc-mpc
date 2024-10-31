@@ -9,7 +9,7 @@ use cosmwasm_std::{
     entry_point, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response,
     StdResult,
 };
-use execute::execute::{create_session, post_partial_sig};
+use execute::execute::{create_session, post_partial_sigs};
 use msg::ExecuteMsg;
 use state::{SESSION_COUNTER, SIGNING_SESSIONS};
 
@@ -36,10 +36,10 @@ pub fn execute(
         ExecuteMsg::CreateSigningSession { payload, nodes } => create_session(deps, nodes, payload),
         ExecuteMsg::PostPartialSig {
             session_id,
-            partial_sig,
+            partial_sigs,
             signature,
             pk,
-        } => post_partial_sig(deps, session_id, partial_sig, signature, pk),
+        } => post_partial_sigs(deps, session_id, partial_sigs, signature, pk),
     }
 }
 
