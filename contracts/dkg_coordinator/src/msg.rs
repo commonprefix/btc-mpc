@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::bls::Session;
+use crate::bls::{Confirmation, Message, Node};
 
 #[derive(Serialize, Deserialize)]
 pub enum QueryMsg {
@@ -13,5 +13,18 @@ pub enum QueryMsg {
 
 #[derive(Serialize, Deserialize)]
 pub enum ExecuteMsg {
-    CreateSession { session: Session },
+    CreateSession {
+        threshold: u16,
+        nodes: Vec<Node>,
+    },
+    PostMessage {
+        message: Message,
+        signature: Vec<u8>,
+        pk: Vec<u8>,
+    },
+    PostConfirmation {
+        confirmation: Confirmation,
+        signature: Vec<u8>,
+        pk: Vec<u8>,
+    },
 }

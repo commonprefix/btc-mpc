@@ -6,12 +6,18 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-fastcrypto-tbls = { git = "https://github.com/MystenLabs/fastcrypto/", subdirectory = "fastcrypto-tbls", rev = "2c593b9" }
-fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto/", subdirectory = "fastcrypto", rev = "2c593b9" }
+cosm-tome = { git = "https://github.com/commonprefix/cosm-tome", rev = "a25c4d0e87419a012161c807fc67850346787bb1" }
+fastcrypto-tbls = { git = "https://github.com/commonprefix/fastcrypto/", subdirectory = "fastcrypto-tbls", branch = "main" }
+fastcrypto = { git = "https://github.com/commonprefix/fastcrypto", subdirectory = "fastcrypto", branch = "main" }
 rand = "0.8.5"
 serde_json = "1.0.120"
 thiserror = "1"
 serde = "1.0.207"
-cosm-tome = "0.2.2"
 serde_yaml = "0.9.34"
 tokio = "1.39.3"
+blst = "0.3.13"
+futures = "0.3"
+log = "0.4.22"
+
+[dev-dependencies]
+serial_test = "3.1.1"

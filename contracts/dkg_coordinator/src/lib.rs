@@ -1,6 +1,8 @@
 mod bls;
+mod execute;
 mod msg;
 mod state;
+mod utils;
 
 use crate::msg::QueryMsg;
 use bls::Session;
@@ -8,6 +10,7 @@ use cosmwasm_std::{
     entry_point, to_json_binary, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response,
     StdResult,
 };
+use execute::execute::{create_session, post_confirmation, post_message};
 use msg::ExecuteMsg;
 use serde::{Deserialize, Serialize};
 use state::SESSION;
@@ -31,11 +34,18 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> StdResult<Response> {
     match msg {
-        ExecuteMsg::CreateSession { session } => {
-            SESSION.save(deps.storage, &Some(session.clone()))?;
-        }
+        ExecuteMsg::CreateSession { threshold, nodes } => create_session(deps, threshold, nodes),
+        ExecuteMsg::PostMessage {
+            message,
+            signature,
+            pk,
+        } => post_message(deps, message, signature, pk),
+        ExecuteMsg::PostConfirmation {
+            confirmation,
+            signature,
+            pk,
+        } => post_confirmation(deps, confirmation, signature, pk),
     }
-    Ok(Response::new())
 }
 
 #[derive(Serialize, Deserialize)]
