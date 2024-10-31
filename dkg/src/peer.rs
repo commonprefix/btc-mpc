@@ -1,7 +1,6 @@
 use crate::dkg_coordinator::{DKGPhase, DKGSession, DkgCoordinatorInterface, Message};
-use crate::error::{DKGError, SigningError};
-use crate::signing_coordinator::{SigningCoordinatorInterface, SigningSession};
-use cosm_tome::chain::MessageExt;
+use crate::error::{DKGError, SigningError, VerificationError};
+use crate::signing_coordinator::SigningCoordinatorInterface;
 use fastcrypto::bls12381::min_sig::{BLS12381PrivateKey, BLS12381PublicKey};
 use fastcrypto::groups::bls12381::{G1Element, G2Element};
 use fastcrypto::serde_helpers::ToFromByteArray;
@@ -25,14 +24,21 @@ pub enum DKGResult {
     OutputConstructed,
 }
 
+#[derive(Debug)]
 pub enum SigningResult {
-    NoOutstandingSession,
     SignedOutstandingSessions,
+    SessionNotFound,
+}
+
+#[derive(Debug)]
+pub enum VerificationResult {
+    VerifiedSignature,
+    VerificationFailed,
 }
 
 pub struct Peer {
     private_key: PrivateKey<G2Element>,
-    public_key: PublicKey<G2Element>,
+    pub public_key: PublicKey<G2Element>,
     dkg_output: Option<Output<G2Element, G2Element>>,
     dkg_session: Option<DKGSession>,
 }
@@ -276,15 +282,6 @@ impl Peer {
             .len() as u16)
     }
 
-    pub async fn fetch_outstanding_signing_sessions<
-        SC: SigningCoordinatorInterface<IndexedValue<G1Element>>,
-    >(
-        &self,
-        signing_coordinator: &SC,
-    ) -> Result<Vec<SigningSession<G1Element>>, SigningError> {
-        todo!()
-    }
-
     pub fn partial_sign(
         &self,
         payload: &[u8],
@@ -305,45 +302,85 @@ impl Peer {
         ))
     }
 
-    pub async fn signing_step<SC: SigningCoordinatorInterface<IndexedValue<G1Element>>>(
+    // TODO: receive partial signatures and check if I have signed or not
+    pub async fn sign<SC: SigningCoordinatorInterface<IndexedValue<G1Element>>>(
         &mut self,
         signing_coordinator: &SC,
+        session_id: &String,
     ) -> Result<SigningResult, SigningError> {
-        let outstanding_sessions = self
-            .fetch_outstanding_signing_sessions(signing_coordinator)
+        let session = signing_coordinator.fetch_session(session_id.clone()).await;
+        if session.is_err() {
+            log::info!("Cannot find session {}", session_id);
+            return Err(SigningError::ErrorFetchingSession);
+        }
+        let session = session.unwrap();
+
+        let payload_bytes = session.payload.as_slice();
+        let payload_str = std::str::from_utf8(&payload_bytes).unwrap();
+        log::info!("Signing '{}'", payload_str);
+        let partial_signatures = self.partial_sign(&payload_bytes).unwrap();
+        // TODO: DRY
+        let sk =
+            BLS12381PrivateKey::from_bytes(&self.private_key.as_element().to_byte_array()).unwrap();
+        let public_key = PublicKey::<G2Element>::from_private_key(&self.private_key);
+        let pk = BLS12381PublicKey::from_bytes(&public_key.as_element().to_byte_array()).unwrap();
+        let signature = sk.sign(
+            &serde_json::to_string(&partial_signatures)
+                .unwrap()
+                .as_bytes(),
+        );
+
+        signing_coordinator
+            .post_partial_signatures(
+                session.session_id.clone(),
+                partial_signatures,
+                signature.sig,
+                pk.pubkey,
+            )
             .await?;
-        if outstanding_sessions.is_empty() {
-            log::info!("No outstanding signing sessions.");
-            return Ok(SigningResult::NoOutstandingSession);
-        }
-
-        for session in outstanding_sessions {
-            let partial_signatures = self
-                .partial_sign(&session.payload.to_bytes().unwrap())
-                .unwrap();
-
-            // TODO: DRY
-            let sk = BLS12381PrivateKey::from_bytes(&self.private_key.as_element().to_byte_array())
-                .unwrap();
-            let public_key = PublicKey::<G2Element>::from_private_key(&self.private_key);
-            let pk =
-                BLS12381PublicKey::from_bytes(&public_key.as_element().to_byte_array()).unwrap();
-            let signature = sk.sign(
-                &serde_json::to_string(&partial_signatures)
-                    .unwrap()
-                    .as_bytes(),
-            );
-
-            signing_coordinator
-                .post_partial_signatures(
-                    session.session_id.clone(),
-                    partial_signatures,
-                    signature.sig,
-                    pk.pubkey,
-                )
-                .await?;
-        }
         Ok(SigningResult::SignedOutstandingSessions)
+    }
+
+    pub async fn verify<SC: SigningCoordinatorInterface<IndexedValue<G1Element>>>(
+        &mut self,
+        random_oracle: RandomOracle,
+        signing_coordinator: &SC,
+        session_id: &String,
+    ) -> Result<VerificationResult, VerificationError> {
+        let session = signing_coordinator.fetch_session(session_id.clone()).await;
+        if session.is_err() {
+            log::info!("Cannot find session {}", session_id);
+            return Err(VerificationError::ErrorFetchingSession);
+        }
+        let session = session.unwrap();
+        let signatures = session.sigs.values().cloned().flatten().collect::<Vec<_>>();
+        let dkg_party = self.get_dkg_party(random_oracle.clone());
+        if dkg_party.is_none() || self.dkg_output.is_none() {
+            return Err(VerificationError::DKGPending);
+        }
+        let dkg_party = dkg_party.unwrap();
+        let dkg_output = self.dkg_output.clone().unwrap();
+
+        let aggregated_signature =
+            ThresholdBls12381MinSig::aggregate(dkg_party.t(), signatures.iter());
+        if aggregated_signature.is_err() {
+            log::error!("Failed to aggregate signatures for session {}", session_id);
+            return Err(VerificationError::ErrorAggregatingSignatures {
+                e: aggregated_signature.err().unwrap().to_string(),
+            });
+        }
+        let aggregated_signature = aggregated_signature.unwrap();
+
+        let verification_result = ThresholdBls12381MinSig::verify(
+            dkg_output.vss_pk.c0(),
+            session.payload.as_slice(),
+            &aggregated_signature,
+        );
+
+        match verification_result {
+            Ok(_) => Ok(VerificationResult::VerifiedSignature),
+            Err(_) => Ok(VerificationResult::VerificationFailed),
+        }
     }
 }
 
@@ -406,7 +443,9 @@ mod test {
 
             let is_duplicate = session.messages.iter().any(|m| m.sender == message.sender);
             if session.phase < DKGPhase::Phase2 && is_duplicate {
-                return Err(DKGError::ErrorPostingMessage);
+                return Err(DKGError::ErrorPostingMessage {
+                    e: String::from("Message is duplicate or out of phase."),
+                });
             }
 
             session.messages.push(message.clone());
@@ -450,7 +489,9 @@ mod test {
                 .iter()
                 .any(|c| c.sender == confirmation.sender);
             if session.phase < DKGPhase::Phase2 && is_duplicate {
-                return Err(DKGError::ErrorPostingConfirmation);
+                return Err(DKGError::ErrorPostingConfirmation {
+                    e: String::from("Confirmation is duplicate or out of phase."),
+                });
             }
 
             session.confirmations.push(confirmation.clone());
