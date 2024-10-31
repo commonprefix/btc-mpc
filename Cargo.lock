@@ -592,6 +592,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 
 [[package]]
+name = "coordinator_primitives"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "blst",
+ "cosmwasm-std 2.1.4",
+ "cosmwasm-storage",
+ "eyre",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1120,6 +1134,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "blst",
+ "coordinator_primitives",
  "cosmwasm-std 2.1.4",
  "cosmwasm-storage",
  "cw-storage-plus",
@@ -2969,6 +2984,23 @@ checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
 dependencies = [
  "digest 0.10.7",
  "rand_core 0.6.4",
+]
+
+[[package]]
+name = "signing_coordinator"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "blst",
+ "coordinator_primitives",
+ "cosmwasm-std 2.1.4",
+ "cosmwasm-storage",
+ "cw-storage-plus",
+ "cw2",
+ "eyre",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

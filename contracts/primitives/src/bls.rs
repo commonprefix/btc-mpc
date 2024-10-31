@@ -1,4 +1,5 @@
 use core::fmt;
+use std::collections::HashMap;
 
 use base64::prelude::*;
 use eyre::{eyre, Result};
@@ -18,8 +19,16 @@ pub enum Phase {
     Phase4,
 }
 
+pub type ShareIndex = u16;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Session {
+pub struct PartialSignature {
+    pub index: ShareIndex,
+    pub value: G1Element,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DKGSession {
     pub phase: Phase,
     pub threshold: u16,
     pub nodes: Nodes,
@@ -27,12 +36,26 @@ pub struct Session {
     pub confirmations: Vec<Confirmation>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SigningSession {
+    pub session_id: String,
+    pub nodes: Nodes,
+    pub sigs: HashMap<(PartyId, ShareIndex), PartialSignature>,
+    pub payload: Vec<u8>,
+}
+
+const G1_ELEMENT_BYTE_LENGTH: usize = 48;
 const G2_ELEMENT_BYTE_LENGTH: usize = 96;
 const SCALAR_LENGTH: usize = 32;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct G2Element {
     pub bytes: Vec<u8>, // TODO: Use G2_ELEMENT_BYTE_LENGTH
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct G1Element {
+    pub bytes: Vec<u8>, // TODO: Use G1_ELEMENT_BYTE_LENGTH
 }
 
 pub type PartyId = u16;
@@ -155,6 +178,34 @@ pub struct Confirmation {
     pub sender: PartyId,
     /// List of complaints against other parties. Empty if there are none.
     pub complaints: Vec<Complaint>,
+}
+
+impl Serialize for G1Element {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let encoded = BASE64_STANDARD.encode(&self.bytes);
+        serializer.serialize_str(&encoded)
+    }
+}
+
+impl<'de> Deserialize<'de> for G1Element {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let decoded = BASE64_STANDARD.decode(&s).map_err(D::Error::custom)?;
+        if decoded.len() != G1_ELEMENT_BYTE_LENGTH {
+            return Err(D::Error::custom(format!(
+                "Invalid length for G1Element: expected {}, got {}",
+                G1_ELEMENT_BYTE_LENGTH,
+                decoded.len()
+            )));
+        }
+        Ok(G1Element { bytes: decoded })
+    }
 }
 
 impl Serialize for G2Element {
