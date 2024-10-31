@@ -2,14 +2,14 @@ use cosm_tome::chain::request::TxOptions;
 use cosm_tome::modules::auth::model::Address;
 use cosm_tome::modules::cosmwasm::model::ExecRequest;
 use cosm_tome::signing_key::key::SigningKey;
-use fastcrypto::groups::bls12381::G2Element;
+use fastcrypto::groups::secp256k1::ProjectivePoint;
 use fastcrypto_tbls::nodes::{Node, Nodes};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-pub type Confirmation = fastcrypto_tbls::dkg::Confirmation<G2Element>;
+pub type Confirmation = fastcrypto_tbls::dkg::Confirmation<ProjectivePoint>;
 
-pub type Message = fastcrypto_tbls::dkg_v0::Message<G2Element, G2Element>;
+pub type Message = fastcrypto_tbls::dkg_v0::Message<ProjectivePoint, ProjectivePoint>;
 
 use crate::endpoints::CosmosEndpoint;
 use crate::error::DKGError;
@@ -26,7 +26,7 @@ pub enum DKGPhase {
 pub struct DKGSession {
     pub phase: DKGPhase,
     pub threshold: u16,
-    pub nodes: Nodes<G2Element>,
+    pub nodes: Nodes<ProjectivePoint>,
     pub messages: Vec<Message>,
     pub confirmations: Vec<Confirmation>,
 }
@@ -36,7 +36,7 @@ pub trait DkgCoordinatorInterface {
     async fn create_session(
         &self,
         threshold: u16,
-        nodes: Vec<Node<G2Element>>,
+        nodes: Vec<Node<ProjectivePoint>>,
     ) -> Result<DKGSession, DKGError>;
 
     async fn fetch_session(&self) -> Result<Option<DKGSession>, DKGError>;
@@ -91,7 +91,7 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
     async fn create_session(
         &self,
         threshold: u16,
-        nodes: Vec<Node<G2Element>>,
+        nodes: Vec<Node<ProjectivePoint>>,
     ) -> Result<DKGSession, DKGError> {
         let message = json!({
             "CreateSession": {
@@ -234,7 +234,7 @@ mod test {
     };
     use fastcrypto::{
         bls12381::min_sig::{BLS12381PrivateKey, BLS12381PublicKey},
-        groups::bls12381::G2Element,
+        groups::secp256k1::ProjectivePoint,
         serde_helpers::ToFromByteArray,
         traits::{Signer, ToFromBytes},
     };
@@ -247,7 +247,7 @@ mod test {
     use rand::thread_rng;
     use serial_test::serial;
 
-    type Message = fastcrypto_tbls::dkg_v0::Message<G2Element, G2Element>;
+    type Message = fastcrypto_tbls::dkg_v0::Message<ProjectivePoint, ProjectivePoint>;
 
     use crate::{
         dkg_coordinator::{
@@ -274,10 +274,10 @@ mod test {
         DkgCoordinator::new(endpoint, contract_address, key)
     }
 
-    fn create_test_key_pair() -> (PrivateKey<G2Element>, PublicKey<G2Element>) {
-        let private_key: PrivateKey<G2Element> = PrivateKey::<G2Element>::new(&mut thread_rng());
-        let public_key: PublicKey<G2Element> =
-            PublicKey::<G2Element>::from_private_key(&private_key);
+    fn create_test_key_pair() -> (PrivateKey<ProjectivePoint>, PublicKey<ProjectivePoint>) {
+        let private_key: PrivateKey<ProjectivePoint> = PrivateKey::<ProjectivePoint>::new(&mut thread_rng());
+        let public_key: PublicKey<ProjectivePoint> =
+            PublicKey::<ProjectivePoint>::from_private_key(&private_key);
 
         (private_key, public_key)
     }
@@ -285,10 +285,10 @@ mod test {
     fn create_parties(
         threshold: u16,
     ) -> (
-        Vec<(PrivateKey<G2Element>, PublicKey<G2Element>)>,
-        Vec<Node<G2Element>>,
-        Vec<Party<G2Element, G2Element>>,
-        Nodes<G2Element>,
+        Vec<(PrivateKey<ProjectivePoint>, PublicKey<ProjectivePoint>)>,
+        Vec<Node<ProjectivePoint>>,
+        Vec<Party<ProjectivePoint, ProjectivePoint>>,
+        Nodes<ProjectivePoint>,
     ) {
         let mut nodes_vec = Vec::new();
         let mut keys = Vec::new();
@@ -307,7 +307,7 @@ mod test {
 
         for i in 0..5 {
             parties.push(
-                Party::<G2Element, G2Element>::new(
+                Party::<ProjectivePoint, ProjectivePoint>::new(
                     keys[i].0.clone(),
                     nodes.clone(),
                     threshold,
@@ -321,7 +321,7 @@ mod test {
         (keys, nodes_vec, parties, nodes)
     }
 
-    fn create_messages(parties: &Vec<Party<G2Element, G2Element>>) -> Vec<Message> {
+    fn create_messages(parties: &Vec<Party<ProjectivePoint, ProjectivePoint>>) -> Vec<Message> {
         let mut messages = Vec::new();
         for party in parties {
             messages.push(party.create_message(&mut thread_rng()).unwrap());
@@ -331,7 +331,7 @@ mod test {
     }
 
     fn create_confirmations(
-        parties: &Vec<Party<G2Element, G2Element>>,
+        parties: &Vec<Party<ProjectivePoint, ProjectivePoint>>,
         messages: &Vec<Message>,
     ) -> Vec<Confirmation> {
         let mut confirmations = Vec::new();

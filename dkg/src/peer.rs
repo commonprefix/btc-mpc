@@ -2,15 +2,15 @@ use crate::dkg_coordinator::{DKGPhase, DKGSession, DkgCoordinatorInterface, Mess
 use crate::error::{DKGError, SigningError, VerificationError};
 use crate::signing_coordinator::SigningCoordinatorInterface;
 use fastcrypto::bls12381::min_sig::{BLS12381PrivateKey, BLS12381PublicKey};
-use fastcrypto::groups::bls12381::{G1Element, G2Element};
+use fastcrypto::groups::bls12381::G1Element;
+use fastcrypto::groups::secp256k1::ProjectivePoint;
 use fastcrypto::serde_helpers::ToFromByteArray;
 use fastcrypto::traits::{Signer, ToFromBytes};
 use fastcrypto_tbls::dkg::{Confirmation, Output, Party};
 use fastcrypto_tbls::dkg_v0::UsedProcessedMessages;
 use fastcrypto_tbls::ecies::{PrivateKey, PublicKey};
 use fastcrypto_tbls::random_oracle::RandomOracle;
-use fastcrypto_tbls::tbls::ThresholdBls;
-use fastcrypto_tbls::types::{IndexedValue, ThresholdBls12381MinSig};
+use fastcrypto_tbls::types::IndexedValue;
 use rand::thread_rng;
 
 #[derive(Debug, PartialEq)]
@@ -37,15 +37,15 @@ pub enum VerificationResult {
 }
 
 pub struct Peer {
-    private_key: PrivateKey<G2Element>,
-    pub public_key: PublicKey<G2Element>,
-    dkg_output: Option<Output<G2Element, G2Element>>,
+    private_key: PrivateKey<ProjectivePoint>,
+    pub public_key: PublicKey<ProjectivePoint>,
+    dkg_output: Option<Output<ProjectivePoint, ProjectivePoint>>,
     dkg_session: Option<DKGSession>,
 }
 
 impl Peer {
-    pub fn new(private_key: PrivateKey<G2Element>) -> Self {
-        let public_key = PublicKey::<G2Element>::from_private_key(&private_key);
+    pub fn new(private_key: PrivateKey<ProjectivePoint>) -> Self {
+        let public_key = PublicKey::<ProjectivePoint>::from_private_key(&private_key);
 
         Self {
             private_key,
@@ -63,13 +63,16 @@ impl Peer {
         Ok(self.dkg_session.clone())
     }
 
-    fn get_dkg_party(&self, random_oracle: RandomOracle) -> Option<Party<G2Element, G2Element>> {
+    fn get_dkg_party(
+        &self,
+        random_oracle: RandomOracle,
+    ) -> Option<Party<ProjectivePoint, ProjectivePoint>> {
         if self.dkg_session.is_none() {
             return None;
         }
 
         Some(
-            Party::<G2Element, G2Element>::new(
+            Party::<ProjectivePoint, ProjectivePoint>::new(
                 self.private_key.clone(),
                 self.dkg_session.as_ref().unwrap().nodes.clone(),
                 self.dkg_session.as_ref().unwrap().threshold,
@@ -115,7 +118,7 @@ impl Peer {
         // TODO: DRY
         let sk =
             BLS12381PrivateKey::from_bytes(&self.private_key.as_element().to_byte_array()).unwrap();
-        let public_key = PublicKey::<G2Element>::from_private_key(&self.private_key);
+        let public_key = PublicKey::<ProjectivePoint>::from_private_key(&self.private_key);
         let pk = BLS12381PublicKey::from_bytes(&public_key.as_element().to_byte_array()).unwrap();
         let signature = sk.sign(&serde_json::to_string(&message).unwrap().as_bytes());
 
@@ -125,7 +128,7 @@ impl Peer {
         Ok(message)
     }
 
-    fn dkg_confirmation_posted(&self) -> Option<Confirmation<G2Element>> {
+    fn dkg_confirmation_posted(&self) -> Option<Confirmation<ProjectivePoint>> {
         if self.dkg_session.is_none() {
             return None;
         }
@@ -152,8 +155,8 @@ impl Peer {
         &self,
         random_oracle: RandomOracle,
     ) -> Option<(
-        Confirmation<G2Element>,
-        UsedProcessedMessages<G2Element, G2Element>,
+        Confirmation<ProjectivePoint>,
+        UsedProcessedMessages<ProjectivePoint, ProjectivePoint>,
     )> {
         if self.dkg_session.is_none() {
             return None;
@@ -181,13 +184,13 @@ impl Peer {
         &mut self,
         dkg_coordinator: &DC,
         random_oracle: RandomOracle,
-    ) -> Result<Confirmation<G2Element>, DKGError> {
+    ) -> Result<Confirmation<ProjectivePoint>, DKGError> {
         let (confirmation, _) = self.create_dkg_confirmation(random_oracle).unwrap();
 
         // TODO: DRY
         let sk =
             BLS12381PrivateKey::from_bytes(&self.private_key.as_element().to_byte_array()).unwrap();
-        let public_key = PublicKey::<G2Element>::from_private_key(&self.private_key);
+        let public_key = PublicKey::<ProjectivePoint>::from_private_key(&self.private_key);
         let pk = BLS12381PublicKey::from_bytes(&public_key.as_element().to_byte_array()).unwrap();
         let signature = sk.sign(&serde_json::to_string(&confirmation).unwrap().as_bytes());
 
@@ -200,7 +203,7 @@ impl Peer {
     async fn construct_dkg_output(
         &mut self,
         random_oracle: RandomOracle,
-    ) -> Result<Output<G2Element, G2Element>, DKGError> {
+    ) -> Result<Output<ProjectivePoint, ProjectivePoint>, DKGError> {
         let dkg_party = self.get_dkg_party(random_oracle.clone()).unwrap();
         let (_, used_messages) = self.create_dkg_confirmation(random_oracle).unwrap();
 
@@ -290,16 +293,7 @@ impl Peer {
             return Err(SigningError::DKGPending);
         }
 
-        Ok(ThresholdBls12381MinSig::partial_sign_batch(
-            self.dkg_output
-                .as_ref()
-                .unwrap()
-                .shares
-                .as_ref()
-                .unwrap()
-                .iter(),
-            payload,
-        ))
+        todo!("Partial signing with secp256k1 not implemented yet");
     }
 
     // TODO: receive partial signatures and check if I have signed or not
@@ -322,7 +316,7 @@ impl Peer {
         // TODO: DRY
         let sk =
             BLS12381PrivateKey::from_bytes(&self.private_key.as_element().to_byte_array()).unwrap();
-        let public_key = PublicKey::<G2Element>::from_private_key(&self.private_key);
+        let public_key = PublicKey::<ProjectivePoint>::from_private_key(&self.private_key);
         let pk = BLS12381PublicKey::from_bytes(&public_key.as_element().to_byte_array()).unwrap();
         let signature = sk.sign(
             &serde_json::to_string(&partial_signatures)
@@ -361,26 +355,7 @@ impl Peer {
         let dkg_party = dkg_party.unwrap();
         let dkg_output = self.dkg_output.clone().unwrap();
 
-        let aggregated_signature =
-            ThresholdBls12381MinSig::aggregate(dkg_party.t(), signatures.iter());
-        if aggregated_signature.is_err() {
-            log::error!("Failed to aggregate signatures for session {}", session_id);
-            return Err(VerificationError::ErrorAggregatingSignatures {
-                e: aggregated_signature.err().unwrap().to_string(),
-            });
-        }
-        let aggregated_signature = aggregated_signature.unwrap();
-
-        let verification_result = ThresholdBls12381MinSig::verify(
-            dkg_output.vss_pk.c0(),
-            session.payload.as_slice(),
-            &aggregated_signature,
-        );
-
-        match verification_result {
-            Ok(_) => Ok(VerificationResult::VerifiedSignature),
-            Err(_) => Ok(VerificationResult::VerificationFailed),
-        }
+        todo!("Verify & aggregate partial signatures with secp256k1 not implemented yet");
     }
 }
 
@@ -388,7 +363,7 @@ impl Peer {
 mod test {
     use std::sync::{Arc, Mutex};
 
-    use fastcrypto::groups::bls12381::G2Element;
+    use fastcrypto::groups::secp256k1::ProjectivePoint;
     use fastcrypto_tbls::{
         ecies::{PrivateKey, PublicKey},
         nodes::{Node, Nodes},
@@ -410,7 +385,7 @@ mod test {
         async fn create_session(
             &self,
             threshold: u16,
-            nodes: Vec<Node<G2Element>>,
+            nodes: Vec<Node<ProjectivePoint>>,
         ) -> Result<DKGSession, DKGError> {
             let mut session = self.session.lock().unwrap();
             *session = Some(DKGSession {
@@ -518,15 +493,18 @@ mod test {
         }
     }
 
-    pub fn create_test_key_pair() -> (PrivateKey<G2Element>, PublicKey<G2Element>) {
-        let private_key: PrivateKey<G2Element> = PrivateKey::<G2Element>::new(&mut thread_rng());
-        let public_key: PublicKey<G2Element> =
-            PublicKey::<G2Element>::from_private_key(&private_key);
+    pub fn create_test_key_pair() -> (PrivateKey<ProjectivePoint>, PublicKey<ProjectivePoint>) {
+        let private_key: PrivateKey<ProjectivePoint> =
+            PrivateKey::<ProjectivePoint>::new(&mut thread_rng());
+        let public_key: PublicKey<ProjectivePoint> =
+            PublicKey::<ProjectivePoint>::from_private_key(&private_key);
 
         (private_key, public_key)
     }
 
-    pub fn create_nodes(nodes: Vec<(PublicKey<G2Element>, u16)>) -> Vec<Node<G2Element>> {
+    pub fn create_nodes(
+        nodes: Vec<(PublicKey<ProjectivePoint>, u16)>,
+    ) -> Vec<Node<ProjectivePoint>> {
         nodes
             .iter()
             .enumerate()

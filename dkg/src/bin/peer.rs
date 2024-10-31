@@ -8,7 +8,7 @@ use dkg::signing_coordinator::{self, SigningCoordinatorInterface};
 use dkg::{dkg_coordinator, peer::Peer};
 use fastcrypto::{
     encoding::{Encoding, Hex},
-    groups::{bls12381::G2Element, GroupElement},
+    groups::{secp256k1::ProjectivePoint, GroupElement},
     serde_helpers::ToFromByteArray,
 };
 use fastcrypto_tbls::ecies::{PrivateKey, PublicKey};
@@ -44,7 +44,7 @@ fn parse_private_key(pk: &str) -> Result<[u8; 32], Error> {
     Ok(bytes)
 }
 
-fn create_parties() -> Vec<Node<G2Element>> {
+fn create_parties() -> Vec<Node<ProjectivePoint>> {
     // Private Keys:
     //      25c33b7bf154cb1e5b55334ca693704c3b1bcbcfdb313502d145d6ebbe327171
     //      00aa92acd0ab7ea3e55a2366526b83c5584528fdb8e2e88a824f0133a3360e5f
@@ -61,9 +61,9 @@ fn create_parties() -> Vec<Node<G2Element>> {
     let mut public_keys = Vec::new();
     for hex in public_keys_hex {
         let decoded = Hex::decode(hex).expect("Invalid public_key_hex");
-        let element = G2Element::from_byte_array(decoded.as_slice().try_into().unwrap())
+        let element = ProjectivePoint::from_byte_array(decoded.as_slice().try_into().unwrap())
             .expect("Invalid public_key_hex");
-        let public_key = PublicKey::<G2Element>::from(element);
+        let public_key = PublicKey::<ProjectivePoint>::from(element);
         public_keys.push(public_key);
     }
 
@@ -191,8 +191,8 @@ async fn main() {
 
     let args = Args::parse();
 
-    let private_key: PrivateKey<G2Element> = PrivateKey::<G2Element>::from(
-        <G2Element as GroupElement>::ScalarType::from_byte_array(&args.private_key)
+    let private_key: PrivateKey<ProjectivePoint> = PrivateKey::<ProjectivePoint>::from(
+        <ProjectivePoint as GroupElement>::ScalarType::from_byte_array(&args.private_key)
             .expect("Invalid private_key"),
     );
     let mut peer = Peer::new(private_key);
