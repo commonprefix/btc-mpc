@@ -1226,6 +1226,7 @@ dependencies = [
  "fastcrypto",
  "fastcrypto-tbls",
  "futures",
+ "k256 0.13.4",
  "log",
  "rand",
  "serde",
