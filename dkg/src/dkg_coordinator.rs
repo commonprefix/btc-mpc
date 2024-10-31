@@ -44,15 +44,15 @@ pub trait DkgCoordinatorInterface {
     async fn post_message(
         &self,
         message: Message,
-        signature: blst::min_sig::Signature,
-        pk: blst::min_sig::PublicKey,
+        signature: k256::ecdsa::Signature,
+        pk: k256::ecdsa::VerifyingKey,
     ) -> Result<Message, DKGError>;
 
     async fn post_confirmation(
         &self,
         confirmation: Confirmation,
-        signature: blst::min_sig::Signature,
-        pk: blst::min_sig::PublicKey,
+        signature: k256::ecdsa::Signature,
+        pk: k256::ecdsa::VerifyingKey,
     ) -> Result<Confirmation, DKGError>;
 }
 
@@ -150,14 +150,14 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
     async fn post_message(
         &self,
         message: Message,
-        signature: blst::min_sig::Signature,
-        pk: blst::min_sig::PublicKey,
+        signature: k256::ecdsa::Signature,
+        pk: k256::ecdsa::VerifyingKey,
     ) -> Result<Message, DKGError> {
         let execute_message = json!({
             "PostMessage": {
                 "message": serde_json::to_value(message.clone()).unwrap(),
-                "pk": pk.serialize().as_slice(),
-                "signature": signature.serialize().as_slice(),
+                "pk": pk.to_sec1_bytes(),
+                "signature": signature.to_bytes(),
             }
         });
 
@@ -189,14 +189,14 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
     async fn post_confirmation(
         &self,
         confirmation: Confirmation,
-        signature: blst::min_sig::Signature,
-        pk: blst::min_sig::PublicKey,
+        signature: k256::ecdsa::Signature,
+        pk: k256::ecdsa::VerifyingKey,
     ) -> Result<Confirmation, DKGError> {
         let execute_message = json!({
             "PostConfirmation": {
                 "confirmation": serde_json::to_value(confirmation.clone()).unwrap(),
-                "pk": pk.serialize().as_slice(),
-                "signature": signature.serialize().as_slice(),
+                "pk": pk.to_sec1_bytes(),
+                "signature": signature.to_bytes(),
             }
         });
 
@@ -275,7 +275,8 @@ mod test {
     }
 
     fn create_test_key_pair() -> (PrivateKey<ProjectivePoint>, PublicKey<ProjectivePoint>) {
-        let private_key: PrivateKey<ProjectivePoint> = PrivateKey::<ProjectivePoint>::new(&mut thread_rng());
+        let private_key: PrivateKey<ProjectivePoint> =
+            PrivateKey::<ProjectivePoint>::new(&mut thread_rng());
         let public_key: PublicKey<ProjectivePoint> =
             PublicKey::<ProjectivePoint>::from_private_key(&private_key);
 

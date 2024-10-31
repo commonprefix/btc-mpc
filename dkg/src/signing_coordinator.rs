@@ -46,8 +46,8 @@ where
         &self,
         session_id: String,
         partial_signatures: Vec<PartialSignature>,
-        signature: blst::min_sig::Signature,
-        pk: blst::min_sig::PublicKey,
+        signature: k256::ecdsa::Signature,
+        pk: k256::ecdsa::VerifyingKey,
     ) -> Result<Vec<PartialSignature>, SigningError>;
 }
 
@@ -162,15 +162,15 @@ impl SigningCoordinatorInterface<IndexedValue<G1Element>>
         &self,
         session_id: String,
         partial_signatures: Vec<IndexedValue<G1Element>>,
-        signature: blst::min_sig::Signature,
-        pk: blst::min_sig::PublicKey,
+        signature: k256::ecdsa::Signature,
+        pk: k256::ecdsa::VerifyingKey,
     ) -> Result<Vec<IndexedValue<G1Element>>, SigningError> {
         let execute_message = json!({
             "PostPartialSig": {
                 "session_id": session_id,
                 "partial_sigs": serde_json::to_value(partial_signatures.clone()).unwrap(),
-                "pk": pk.serialize().as_slice(),
-                "signature": signature.serialize().as_slice(),
+                "pk": pk.to_sec1_bytes(),
+                "signature": signature.to_bytes(),
             }
         });
 

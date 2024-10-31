@@ -1,16 +1,16 @@
 use crate::dkg_coordinator::{DKGPhase, DKGSession, DkgCoordinatorInterface, Message};
 use crate::error::{DKGError, SigningError, VerificationError};
 use crate::signing_coordinator::SigningCoordinatorInterface;
-use fastcrypto::bls12381::min_sig::{BLS12381PrivateKey, BLS12381PublicKey};
 use fastcrypto::groups::bls12381::G1Element;
 use fastcrypto::groups::secp256k1::ProjectivePoint;
 use fastcrypto::serde_helpers::ToFromByteArray;
-use fastcrypto::traits::{Signer, ToFromBytes};
 use fastcrypto_tbls::dkg::{Confirmation, Output, Party};
 use fastcrypto_tbls::dkg_v0::UsedProcessedMessages;
 use fastcrypto_tbls::ecies::{PrivateKey, PublicKey};
 use fastcrypto_tbls::random_oracle::RandomOracle;
 use fastcrypto_tbls::types::IndexedValue;
+use k256::ecdsa::Signature;
+use k256::ecdsa::{signature::Signer, SigningKey};
 use rand::thread_rng;
 
 #[derive(Debug, PartialEq)]
@@ -117,13 +117,12 @@ impl Peer {
 
         // TODO: DRY
         let sk =
-            BLS12381PrivateKey::from_bytes(&self.private_key.as_element().to_byte_array()).unwrap();
-        let public_key = PublicKey::<ProjectivePoint>::from_private_key(&self.private_key);
-        let pk = BLS12381PublicKey::from_bytes(&public_key.as_element().to_byte_array()).unwrap();
-        let signature = sk.sign(&serde_json::to_string(&message).unwrap().as_bytes());
+            SigningKey::from_bytes(&self.private_key.as_element().to_byte_array().into()).unwrap();
+        let pk = sk.verifying_key();
+        let signature: Signature = sk.sign(&serde_json::to_string(&message).unwrap().as_bytes());
 
         dkg_coordinator
-            .post_message(message.clone(), signature.sig, pk.pubkey)
+            .post_message(message.clone(), signature, *pk)
             .await?;
         Ok(message)
     }
@@ -189,13 +188,13 @@ impl Peer {
 
         // TODO: DRY
         let sk =
-            BLS12381PrivateKey::from_bytes(&self.private_key.as_element().to_byte_array()).unwrap();
-        let public_key = PublicKey::<ProjectivePoint>::from_private_key(&self.private_key);
-        let pk = BLS12381PublicKey::from_bytes(&public_key.as_element().to_byte_array()).unwrap();
-        let signature = sk.sign(&serde_json::to_string(&confirmation).unwrap().as_bytes());
+            SigningKey::from_bytes(&self.private_key.as_element().to_byte_array().into()).unwrap();
+        let pk = sk.verifying_key();
+        let signature: Signature =
+            sk.sign(&serde_json::to_string(&confirmation).unwrap().as_bytes());
 
         dkg_coordinator
-            .post_confirmation(confirmation.clone(), signature.sig, pk.pubkey)
+            .post_confirmation(confirmation.clone(), signature, *pk)
             .await?;
         Ok(confirmation)
     }
@@ -315,10 +314,9 @@ impl Peer {
         let partial_signatures = self.partial_sign(&payload_bytes).unwrap();
         // TODO: DRY
         let sk =
-            BLS12381PrivateKey::from_bytes(&self.private_key.as_element().to_byte_array()).unwrap();
-        let public_key = PublicKey::<ProjectivePoint>::from_private_key(&self.private_key);
-        let pk = BLS12381PublicKey::from_bytes(&public_key.as_element().to_byte_array()).unwrap();
-        let signature = sk.sign(
+            SigningKey::from_bytes(&self.private_key.as_element().to_byte_array().into()).unwrap();
+        let pk = sk.verifying_key();
+        let signature: Signature = sk.sign(
             &serde_json::to_string(&partial_signatures)
                 .unwrap()
                 .as_bytes(),
@@ -328,8 +326,8 @@ impl Peer {
             .post_partial_signatures(
                 session.session_id.clone(),
                 partial_signatures,
-                signature.sig,
-                pk.pubkey,
+                signature,
+                *pk,
             )
             .await?;
         Ok(SigningResult::SignedOutstandingSessions)
@@ -369,6 +367,7 @@ mod test {
         nodes::{Node, Nodes},
         random_oracle::RandomOracle,
     };
+    use k256::ecdsa::{Signature, VerifyingKey};
     use rand::thread_rng;
 
     use crate::{
@@ -406,8 +405,8 @@ mod test {
         async fn post_message(
             &self,
             message: Message,
-            signature: blst::min_sig::Signature,
-            pk: blst::min_sig::PublicKey,
+            signature: Signature,
+            pk: VerifyingKey,
         ) -> Result<Message, DKGError> {
             let mut session = self.session.lock().unwrap();
             let session = session.as_mut().unwrap();
@@ -449,8 +448,8 @@ mod test {
         async fn post_confirmation(
             &self,
             confirmation: Confirmation,
-            signature: blst::min_sig::Signature,
-            pk: blst::min_sig::PublicKey,
+            signature: Signature,
+            pk: VerifyingKey,
         ) -> Result<Confirmation, DKGError> {
             let mut session = self.session.lock().unwrap();
             let session = session.as_mut().unwrap();
