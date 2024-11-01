@@ -1243,7 +1243,6 @@ name = "dkg_coordinator"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
- "blst",
  "coordinator_primitives",
  "cosmwasm-crypto 2.1.4",
  "cosmwasm-std 2.1.4",
