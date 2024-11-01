@@ -222,7 +222,7 @@ mod test {
         ecies::{PrivateKey, PublicKey},
         nodes::{Node, Nodes, PartyId},
         random_oracle::RandomOracle,
-        types::{IndexedValue},
+        types::IndexedValue,
     };
     use rand::thread_rng;
 
