@@ -4,7 +4,7 @@ pub mod execute {
     use blst::min_sig::{PublicKey, Signature};
     use cosmwasm_std::{DepsMut, Response, StdError, StdResult};
     use primitives::{
-        bls::{Nodes, PartialSignature, SigningSession},
+        dkg::{Nodes, PartialSignature, SigningSession},
         utils::{filter_known_pk, verify_signature},
     };
     use thiserror::Error;
@@ -67,7 +67,7 @@ pub mod execute {
             .ok_or(ExecuteError::SessionNotInitialized)?;
         let pubkey = PublicKey::from_bytes(&pk).map_err(|_| ExecuteError::InvalidPublicKey)?;
 
-        let node = filter_known_pk(&pubkey, &session.nodes.nodes)
+        let node = filter_known_pk(&pk, &session.nodes.nodes)
             .map_err(|_e| ExecuteError::UnknownPublicKey)?;
 
         verify_signature(

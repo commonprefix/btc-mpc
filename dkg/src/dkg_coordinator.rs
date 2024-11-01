@@ -2,14 +2,14 @@ use cosm_tome::chain::request::TxOptions;
 use cosm_tome::modules::auth::model::Address;
 use cosm_tome::modules::cosmwasm::model::ExecRequest;
 use cosm_tome::signing_key::key::SigningKey;
-use fastcrypto::groups::bls12381::G2Element;
+use fastcrypto::groups::secp256k1::ProjectivePoint;
 use fastcrypto_tbls::nodes::{Node, Nodes};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-pub type Confirmation = fastcrypto_tbls::dkg::Confirmation<G2Element>;
+pub type Confirmation = fastcrypto_tbls::dkg::Confirmation<ProjectivePoint>;
 
-pub type Message = fastcrypto_tbls::dkg_v0::Message<G2Element, G2Element>;
+pub type Message = fastcrypto_tbls::dkg_v0::Message<ProjectivePoint, ProjectivePoint>;
 
 use crate::endpoints::CosmosEndpoint;
 use crate::error::DKGError;
@@ -26,7 +26,7 @@ pub enum DKGPhase {
 pub struct DKGSession {
     pub phase: DKGPhase,
     pub threshold: u16,
-    pub nodes: Nodes<G2Element>,
+    pub nodes: Nodes<ProjectivePoint>,
     pub messages: Vec<Message>,
     pub confirmations: Vec<Confirmation>,
 }
@@ -36,7 +36,7 @@ pub trait DkgCoordinatorInterface {
     async fn create_session(
         &self,
         threshold: u16,
-        nodes: Vec<Node<G2Element>>,
+        nodes: Vec<Node<ProjectivePoint>>,
     ) -> Result<DKGSession, DKGError>;
 
     async fn fetch_session(&self) -> Result<Option<DKGSession>, DKGError>;
@@ -44,15 +44,15 @@ pub trait DkgCoordinatorInterface {
     async fn post_message(
         &self,
         message: Message,
-        signature: blst::min_sig::Signature,
-        pk: blst::min_sig::PublicKey,
+        signature: k256::ecdsa::Signature,
+        pk: k256::ecdsa::VerifyingKey,
     ) -> Result<Message, DKGError>;
 
     async fn post_confirmation(
         &self,
         confirmation: Confirmation,
-        signature: blst::min_sig::Signature,
-        pk: blst::min_sig::PublicKey,
+        signature: k256::ecdsa::Signature,
+        pk: k256::ecdsa::VerifyingKey,
     ) -> Result<Confirmation, DKGError>;
 }
 
@@ -91,7 +91,7 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
     async fn create_session(
         &self,
         threshold: u16,
-        nodes: Vec<Node<G2Element>>,
+        nodes: Vec<Node<ProjectivePoint>>,
     ) -> Result<DKGSession, DKGError> {
         let message = json!({
             "CreateSession": {
@@ -150,14 +150,14 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
     async fn post_message(
         &self,
         message: Message,
-        signature: blst::min_sig::Signature,
-        pk: blst::min_sig::PublicKey,
+        signature: k256::ecdsa::Signature,
+        pk: k256::ecdsa::VerifyingKey,
     ) -> Result<Message, DKGError> {
         let execute_message = json!({
             "PostMessage": {
                 "message": serde_json::to_value(message.clone()).unwrap(),
-                "pk": pk.serialize().as_slice(),
-                "signature": signature.serialize().as_slice(),
+                "pk": pk.to_sec1_bytes(),
+                "signature": signature.to_bytes(),
             }
         });
 
@@ -189,14 +189,14 @@ impl DkgCoordinatorInterface for DkgCoordinator<CosmosEndpoint, Address> {
     async fn post_confirmation(
         &self,
         confirmation: Confirmation,
-        signature: blst::min_sig::Signature,
-        pk: blst::min_sig::PublicKey,
+        signature: k256::ecdsa::Signature,
+        pk: k256::ecdsa::VerifyingKey,
     ) -> Result<Confirmation, DKGError> {
         let execute_message = json!({
             "PostConfirmation": {
                 "confirmation": serde_json::to_value(confirmation.clone()).unwrap(),
-                "pk": pk.serialize().as_slice(),
-                "signature": signature.serialize().as_slice(),
+                "pk": pk.to_sec1_bytes(),
+                "signature": signature.to_bytes(),
             }
         });
 
@@ -232,22 +232,18 @@ mod test {
         modules::auth::model::Address,
         signing_key::key::{Key, SigningKey},
     };
-    use fastcrypto::{
-        bls12381::min_sig::{BLS12381PrivateKey, BLS12381PublicKey},
-        groups::bls12381::G2Element,
-        serde_helpers::ToFromByteArray,
-        traits::{Signer, ToFromBytes},
-    };
+    use fastcrypto::{groups::secp256k1::ProjectivePoint, serde_helpers::ToFromByteArray};
     use fastcrypto_tbls::{
         dkg::Party,
         ecies::{PrivateKey, PublicKey},
         nodes::{Node, Nodes},
         random_oracle::RandomOracle,
     };
+    use k256::ecdsa::signature::Signer;
     use rand::thread_rng;
     use serial_test::serial;
 
-    type Message = fastcrypto_tbls::dkg_v0::Message<G2Element, G2Element>;
+    type Message = fastcrypto_tbls::dkg_v0::Message<ProjectivePoint, ProjectivePoint>;
 
     use crate::{
         dkg_coordinator::{
@@ -267,17 +263,18 @@ mod test {
     fn create_coordinator_instance() -> DkgCoordinator<CosmosEndpoint, Address> {
         let endpoint = CosmosEndpoint::new("./config/osmosis_testnet.yaml");
         let contract_address: Address =
-            "osmo13kps8f4xw8em978ysjgksqh38qgvr6x9yk9ey7694waflnhft0wsmj5skm"
+            "osmo1nhpnyjw4wlwruzf323ghkhjfvvanqfdqg8esw8qpxwfjp2wjw46snx07ht"
                 .parse()
                 .unwrap();
         let key = create_test_key();
         DkgCoordinator::new(endpoint, contract_address, key)
     }
 
-    fn create_test_key_pair() -> (PrivateKey<G2Element>, PublicKey<G2Element>) {
-        let private_key: PrivateKey<G2Element> = PrivateKey::<G2Element>::new(&mut thread_rng());
-        let public_key: PublicKey<G2Element> =
-            PublicKey::<G2Element>::from_private_key(&private_key);
+    fn create_test_key_pair() -> (PrivateKey<ProjectivePoint>, PublicKey<ProjectivePoint>) {
+        let private_key: PrivateKey<ProjectivePoint> =
+            PrivateKey::<ProjectivePoint>::new(&mut thread_rng());
+        let public_key: PublicKey<ProjectivePoint> =
+            PublicKey::<ProjectivePoint>::from_private_key(&private_key);
 
         (private_key, public_key)
     }
@@ -285,10 +282,10 @@ mod test {
     fn create_parties(
         threshold: u16,
     ) -> (
-        Vec<(PrivateKey<G2Element>, PublicKey<G2Element>)>,
-        Vec<Node<G2Element>>,
-        Vec<Party<G2Element, G2Element>>,
-        Nodes<G2Element>,
+        Vec<(PrivateKey<ProjectivePoint>, PublicKey<ProjectivePoint>)>,
+        Vec<Node<ProjectivePoint>>,
+        Vec<Party<ProjectivePoint, ProjectivePoint>>,
+        Nodes<ProjectivePoint>,
     ) {
         let mut nodes_vec = Vec::new();
         let mut keys = Vec::new();
@@ -307,7 +304,7 @@ mod test {
 
         for i in 0..5 {
             parties.push(
-                Party::<G2Element, G2Element>::new(
+                Party::<ProjectivePoint, ProjectivePoint>::new(
                     keys[i].0.clone(),
                     nodes.clone(),
                     threshold,
@@ -321,7 +318,7 @@ mod test {
         (keys, nodes_vec, parties, nodes)
     }
 
-    fn create_messages(parties: &Vec<Party<G2Element, G2Element>>) -> Vec<Message> {
+    fn create_messages(parties: &Vec<Party<ProjectivePoint, ProjectivePoint>>) -> Vec<Message> {
         let mut messages = Vec::new();
         for party in parties {
             messages.push(party.create_message(&mut thread_rng()).unwrap());
@@ -331,7 +328,7 @@ mod test {
     }
 
     fn create_confirmations(
-        parties: &Vec<Party<G2Element, G2Element>>,
+        parties: &Vec<Party<ProjectivePoint, ProjectivePoint>>,
         messages: &Vec<Message>,
     ) -> Vec<Confirmation> {
         let mut confirmations = Vec::new();
@@ -344,28 +341,6 @@ mod test {
         }
 
         confirmations
-    }
-
-    fn testdata() -> (String, String, String) {
-        let message = std::fs::read_to_string("./testdata/message.json")
-            .unwrap()
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>();
-
-        let confirmation = std::fs::read_to_string("./testdata/confirmation.json")
-            .unwrap()
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>();
-
-        let nodes = std::fs::read_to_string("./testdata/nodes.json")
-            .unwrap()
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>();
-
-        (message, confirmation, nodes)
     }
 
     #[tokio::test]
@@ -401,11 +376,14 @@ mod test {
 
         // create message and sign it
         let message = party.create_message(&mut thread_rng()).unwrap();
-        let sk = BLS12381PrivateKey::from_bytes(&keys[0].0.as_element().to_byte_array()).unwrap();
-        let pk = BLS12381PublicKey::from_bytes(&keys[0].1.as_element().to_byte_array()).unwrap();
         let message_json = serde_json::to_string(&message).unwrap();
         let msg_bytes = message_json.as_bytes();
-        let signature = sk.sign(msg_bytes);
+
+        let sk =
+            k256::ecdsa::SigningKey::from_bytes(&keys[0].0.as_element().to_byte_array().into())
+                .unwrap();
+        let pk = sk.verifying_key();
+        let signature: k256::ecdsa::Signature = sk.sign(&msg_bytes);
 
         // create new session
         assert!(dkg_coordinator
@@ -415,7 +393,7 @@ mod test {
 
         // post message
         assert!(dkg_coordinator
-            .post_message(message.clone(), signature.sig, pk.pubkey)
+            .post_message(message.clone(), signature, *pk)
             .await
             .is_ok());
 
@@ -446,15 +424,17 @@ mod test {
             .is_ok());
 
         // sign confirmation
-        let sk = BLS12381PrivateKey::from_bytes(&keys[0].0.as_element().to_byte_array()).unwrap();
-        let pk = BLS12381PublicKey::from_bytes(&keys[0].1.as_element().to_byte_array()).unwrap();
         let message_json = serde_json::to_string(&confirmations[0]).unwrap();
         let msg_bytes = message_json.as_bytes();
-        let signature = sk.sign(msg_bytes);
+        let sk =
+            k256::ecdsa::SigningKey::from_bytes(&keys[0].0.as_element().to_byte_array().into())
+                .unwrap();
+        let pk = sk.verifying_key();
+        let signature: k256::ecdsa::Signature = sk.sign(&msg_bytes);
 
         // post confirmation
         assert!(dkg_coordinator
-            .post_confirmation(confirmations[0].clone(), signature.sig, pk.pubkey)
+            .post_confirmation(confirmations[0].clone(), signature, *pk)
             .await
             .is_ok());
 

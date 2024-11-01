@@ -8,7 +8,7 @@ use dkg::signing_coordinator::{self, SigningCoordinatorInterface};
 use dkg::{dkg_coordinator, peer::Peer};
 use fastcrypto::{
     encoding::{Encoding, Hex},
-    groups::{bls12381::G2Element, GroupElement},
+    groups::{secp256k1::ProjectivePoint, GroupElement},
     serde_helpers::ToFromByteArray,
 };
 use fastcrypto_tbls::ecies::{PrivateKey, PublicKey};
@@ -44,26 +44,26 @@ fn parse_private_key(pk: &str) -> Result<[u8; 32], Error> {
     Ok(bytes)
 }
 
-fn create_parties() -> Vec<Node<G2Element>> {
+fn create_parties() -> Vec<Node<ProjectivePoint>> {
     // Private Keys:
-    //      25c33b7bf154cb1e5b55334ca693704c3b1bcbcfdb313502d145d6ebbe327171
-    //      00aa92acd0ab7ea3e55a2366526b83c5584528fdb8e2e88a824f0133a3360e5f
-    //      39213bd714d9420efeeff90d2fda1a87ebc428e5537387e79043f308f497ed50
-    //      66a1a9411f6c7df69aec280260dfa4d7b983d6d806809826eb70251af54bb783
-    //      0f5a6e50f44eefe9aee5b8516f2715f29112c74231f3f6d0738d06b48c353a22
+    //      ada2ba5d35f55819093db528ef25470a21419adb010e63a92c99f4a07b898a4b
+    //      8ca89e6c9589e18846d740b0115f5a7c954b0e3fa75c86f8f76a24e0786b7b1e
+    //      863553c5aad53faa72d5f6855715b76c0056ac7e266e5cfee2cead7a98d7edc5
+    //      2ade1e3c547c98075680cc2959f656699c3da1d7b8bef2ac6413fd961219bc98
+    //      7f0b291c0db44983658c7bacb06753d24d374c33524dc0a3bfc4088b7a78736c
     let public_keys_hex = vec![
-        "a5a7070a8c12cecefea675e10ddadc921c4443afa8d9cdab95c2cb0d8707ca2c793995b392f3ecded68a895b13065ab7038ddc97989538bdb44129e6000a099bc85cb8236c0b7219f5ef0ec15f3758d84814a3d9521f60f9f80f29a7c9a345c6",
-        "a569e75f1efd390764b4c825ceaf136cd96a0201a4b8fc6d32ca401cb1b5d47a492944441bebe748989704fc4561dda90c44f6e1a2e057c5c40f2e4af062df9e2d46a45db71eaac75b8df0f918a5c86ebd4ff97315dc59586b5b9976f7c7dcc2",
-        "90270663e9ca11269f82877aff962ed727a3a546e1b1d36209e0af34253b56c016ee2cc9661b4e6f137d7dcc47a6023205821de80244621d6c8472d34e5df0861c9a6533b4b4bd46ab29a2961bfa42f0ba37d94cd110f75870ee336d33e23fe9",
-        "b0e64d37fbfde8ba53930ceb5e4f1ca1fa4242c362407cc35f8639b2e9f615e585fb01f90993bc9b5ae204421e502df6153d5ddf16e4a49162bd8ee1e09ced42343c16c15c5e90aafc2dcb662407058f4de05763c2cd69a0ea599e5849c45965",
-        "84e8f9742f79a299e396c031ccad282fc6f47824751cf3e21a1ae051f84d800c63d84b3b869518b22283a56174b36b5f119c1a1ab3bb41634e8b4cf7b8dc15bb4e93c79f1b466ee6d7b25c09475d59a5b82d466fbe2b9d77507595f2ba340052",
+        "03be0482e96470dbfc781a24343be978e13d06ef9d2621324ceccf2e46daed4be3",
+        "03d22cd806fd76a77f565fc76378dbe919c06cbf888e9408df69fe2b8e46b70d9b",
+        "03c7b17b2c8df9c82b6f8d19e96ad4f879a6e53a9e3f2d86eec6c07a0006662bb0",
+        "03d911b9a999b84f8ef0d4feb172045f44ecfe584b20c4ed89e5e003429b0f5e0c",
+        "039b69c7d1b657b145592b4591e5f3fa77e299aadb38b2c93a25d6da062f5e764e",
     ];
     let mut public_keys = Vec::new();
     for hex in public_keys_hex {
         let decoded = Hex::decode(hex).expect("Invalid public_key_hex");
-        let element = G2Element::from_byte_array(decoded.as_slice().try_into().unwrap())
+        let element = ProjectivePoint::from_byte_array(decoded.as_slice().try_into().unwrap())
             .expect("Invalid public_key_hex");
-        let public_key = PublicKey::<G2Element>::from(element);
+        let public_key = PublicKey::<ProjectivePoint>::from(element);
         public_keys.push(public_key);
     }
 
@@ -191,12 +191,12 @@ async fn main() {
 
     let args = Args::parse();
 
-    let private_key: PrivateKey<G2Element> = PrivateKey::<G2Element>::from(
-        <G2Element as GroupElement>::ScalarType::from_byte_array(&args.private_key)
+    let private_key: PrivateKey<ProjectivePoint> = PrivateKey::<ProjectivePoint>::from(
+        <ProjectivePoint as GroupElement>::ScalarType::from_byte_array(&args.private_key)
             .expect("Invalid private_key"),
     );
     let mut peer = Peer::new(private_key);
-    log::info!("Peer created with public key: {:?}", peer.public_key);
+    log::info!("Peer created with public key: {:?}", peer.public_key); // TODO: pretty print
 
     let endpoint = CosmosEndpoint::new(args.cosmos_config_path.to_str().unwrap());
     let key = SigningKey {

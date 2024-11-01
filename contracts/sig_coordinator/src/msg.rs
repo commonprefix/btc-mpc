@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use primitives::bls::{Nodes, PartialSignature};
+use primitives::dkg::{Nodes, PartialSignature};
 
 #[derive(Serialize, Deserialize)]
 pub enum QueryMsg {

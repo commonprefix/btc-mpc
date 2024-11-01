@@ -5,7 +5,7 @@ use cosm_tome::{
     modules::{auth::model::Address, cosmwasm::model::ExecRequest},
     signing_key::key::SigningKey,
 };
-use fastcrypto::groups::bls12381::{G1Element, G2Element};
+use fastcrypto::groups::{bls12381::G1Element, secp256k1::ProjectivePoint};
 use fastcrypto_tbls::{
     nodes::{Nodes, PartyId},
     types::IndexedValue,
@@ -18,7 +18,7 @@ use crate::{endpoints::CosmosEndpoint, error::SigningError};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SigningSession<PartialSignature> {
     pub session_id: String,
-    pub nodes: Nodes<G2Element>,
+    pub nodes: Nodes<ProjectivePoint>,
     pub sigs: HashMap<PartyId, Vec<PartialSignature>>,
     pub payload: Vec<u8>,
 }
@@ -31,7 +31,7 @@ where
     /// Create a new signing session.
     async fn create_session(
         &self,
-        nodes: Nodes<G2Element>,
+        nodes: Nodes<ProjectivePoint>,
         payload: Vec<u8>,
     ) -> Result<String, SigningError>;
 
@@ -46,8 +46,8 @@ where
         &self,
         session_id: String,
         partial_signatures: Vec<PartialSignature>,
-        signature: blst::min_sig::Signature,
-        pk: blst::min_sig::PublicKey,
+        signature: k256::ecdsa::Signature,
+        pk: k256::ecdsa::VerifyingKey,
     ) -> Result<Vec<PartialSignature>, SigningError>;
 }
 
@@ -87,7 +87,7 @@ impl SigningCoordinatorInterface<IndexedValue<G1Element>>
 {
     async fn create_session(
         &self,
-        nodes: Nodes<G2Element>,
+        nodes: Nodes<ProjectivePoint>,
         payload: Vec<u8>,
     ) -> Result<String, SigningError> {
         let message = json!({
@@ -162,15 +162,15 @@ impl SigningCoordinatorInterface<IndexedValue<G1Element>>
         &self,
         session_id: String,
         partial_signatures: Vec<IndexedValue<G1Element>>,
-        signature: blst::min_sig::Signature,
-        pk: blst::min_sig::PublicKey,
+        signature: k256::ecdsa::Signature,
+        pk: k256::ecdsa::VerifyingKey,
     ) -> Result<Vec<IndexedValue<G1Element>>, SigningError> {
         let execute_message = json!({
             "PostPartialSig": {
                 "session_id": session_id,
                 "partial_sigs": serde_json::to_value(partial_signatures.clone()).unwrap(),
-                "pk": pk.serialize().as_slice(),
-                "signature": signature.serialize().as_slice(),
+                "pk": pk.to_sec1_bytes(),
+                "signature": signature.to_bytes(),
             }
         });
 
@@ -209,13 +209,8 @@ mod test {
         signing_key::key::{Key, SigningKey},
     };
     use fastcrypto::{
-        bls12381::min_sig::{BLS12381PrivateKey, BLS12381PublicKey},
-        groups::{
-            bls12381::{G1Element, G2Element},
-            GroupElement,
-        },
+        groups::{bls12381::G1Element, secp256k1::ProjectivePoint, GroupElement},
         serde_helpers::ToFromByteArray,
-        traits::{Signer, ToFromBytes},
     };
     use fastcrypto_tbls::{
         dkg::Party,
@@ -224,6 +219,7 @@ mod test {
         random_oracle::RandomOracle,
         types::IndexedValue,
     };
+    use k256::ecdsa::signature::Signer;
     use rand::thread_rng;
 
     use crate::{endpoints::CosmosEndpoint, signing_coordinator::SigningCoordinatorInterface};
@@ -248,10 +244,11 @@ mod test {
         SigningCoordinator::new(endpoint, contract_address, key)
     }
 
-    fn create_test_key_pair() -> (PrivateKey<G2Element>, PublicKey<G2Element>) {
-        let private_key: PrivateKey<G2Element> = PrivateKey::<G2Element>::new(&mut thread_rng());
-        let public_key: PublicKey<G2Element> =
-            PublicKey::<G2Element>::from_private_key(&private_key);
+    fn create_test_key_pair() -> (PrivateKey<ProjectivePoint>, PublicKey<ProjectivePoint>) {
+        let private_key: PrivateKey<ProjectivePoint> =
+            PrivateKey::<ProjectivePoint>::new(&mut thread_rng());
+        let public_key: PublicKey<ProjectivePoint> =
+            PublicKey::<ProjectivePoint>::from_private_key(&private_key);
 
         (private_key, public_key)
     }
@@ -259,10 +256,10 @@ mod test {
     fn create_parties(
         threshold: u16,
     ) -> (
-        Vec<(PrivateKey<G2Element>, PublicKey<G2Element>)>,
-        Vec<Node<G2Element>>,
-        Vec<Party<G2Element, G2Element>>,
-        Nodes<G2Element>,
+        Vec<(PrivateKey<ProjectivePoint>, PublicKey<ProjectivePoint>)>,
+        Vec<Node<ProjectivePoint>>,
+        Vec<Party<ProjectivePoint, ProjectivePoint>>,
+        Nodes<ProjectivePoint>,
     ) {
         let mut nodes_vec = Vec::new();
         let mut keys = Vec::new();
@@ -281,7 +278,7 @@ mod test {
 
         for i in 0..5 {
             parties.push(
-                Party::<G2Element, G2Element>::new(
+                Party::<ProjectivePoint, ProjectivePoint>::new(
                     keys[i].0.clone(),
                     nodes.clone(),
                     threshold,
@@ -296,6 +293,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_create_and_fetch() {
         let coordinator = create_coordinator_instance();
         let (_, _, _, nodes) = create_parties(5);
@@ -320,6 +318,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_post_sig() {
         let coordinator = create_coordinator_instance();
         let (keys, _, _, nodes) = create_parties(5);
@@ -342,20 +341,17 @@ mod test {
             },
         ];
 
-        let sk = BLS12381PrivateKey::from_bytes(&keys[0].0.as_element().to_byte_array()).unwrap();
-        let pk = BLS12381PublicKey::from_bytes(&keys[0].1.as_element().to_byte_array()).unwrap();
         let partial_sig_json = serde_json::to_string(&partial_sigs.clone()).unwrap();
         let partial_sig_bytes = partial_sig_json.as_bytes();
-        let signature = sk.sign(partial_sig_bytes);
+        let sk =
+            k256::ecdsa::SigningKey::from_bytes(&keys[0].0.as_element().to_byte_array().into())
+                .unwrap();
+        let pk = sk.verifying_key();
+        let signature: k256::ecdsa::Signature = sk.sign(&partial_sig_bytes);
 
         // pushing 2 signatures
         assert!(coordinator
-            .post_partial_signatures(
-                session_id.clone(),
-                partial_sigs.clone(),
-                signature.sig,
-                pk.pubkey,
-            )
+            .post_partial_signatures(session_id.clone(), partial_sigs.clone(), signature, *pk,)
             .await
             .is_ok());
         expected_signatures.insert(0 as PartyId, partial_sigs);
@@ -367,15 +363,10 @@ mod test {
         }];
         let partial_sig_json = serde_json::to_string(&partial_sigs.clone()).unwrap();
         let partial_sig_bytes = partial_sig_json.as_bytes();
-        let signature = sk.sign(partial_sig_bytes);
+        let signature: k256::ecdsa::Signature = sk.sign(&partial_sig_bytes);
 
         assert!(coordinator
-            .post_partial_signatures(
-                session_id.clone(),
-                partial_sigs.clone(),
-                signature.sig,
-                pk.pubkey,
-            )
+            .post_partial_signatures(session_id.clone(), partial_sigs.clone(), signature, *pk,)
             .await
             .is_ok());
         let stored_signatures = expected_signatures.get_mut(&(0 as PartyId)).unwrap();

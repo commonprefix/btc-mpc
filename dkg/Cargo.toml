@@ -11,8 +11,8 @@ edition = "2021"
 
 [dependencies]
 cosm-tome = { git = "https://github.com/commonprefix/cosm-tome", rev = "a25c4d0e87419a012161c807fc67850346787bb1" }
-fastcrypto-tbls = { git = "https://github.com/commonprefix/fastcrypto/", subdirectory = "fastcrypto-tbls", branch = "main" }
-fastcrypto = { git = "https://github.com/commonprefix/fastcrypto", subdirectory = "fastcrypto", branch = "main" }
+fastcrypto-tbls = { git = "https://github.com/commonprefix/fastcrypto/", subdirectory = "fastcrypto-tbls", branch = "feature/secp256k1_dkg" }
+fastcrypto = { git = "https://github.com/commonprefix/fastcrypto", subdirectory = "fastcrypto", branch = "feature/secp256k1_dkg" }
 rand = "0.8.5"
 serde_json = "1.0.120"
 thiserror = "1"
@@ -24,6 +24,7 @@ futures = "0.3"
 log = "0.4.22"
 env_logger = "0.9"
 clap = { version = "4.4.18", features = ["derive"] }
+k256 = "0.13.4"
 
 [dev-dependencies]
 serial_test = "3.1.1"

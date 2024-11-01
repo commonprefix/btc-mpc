@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 base64 = "0.22.1"
 blst = "0.3.13"
+cosmwasm-crypto = "2.1.4"
 cosmwasm-std = "2.1.1"
 cosmwasm-storage = "1.5.2"
 eyre = "0.6.12"
