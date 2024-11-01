@@ -4,7 +4,7 @@ use blst::{
 };
 use eyre::{eyre, Result};
 
-use crate::bls::{Confirmation, Message, Node, PartyId, DST_G1};
+use crate::dkg::{Confirmation, Message, Node, PartyId, DST_G1};
 pub trait HasSender {
     fn get_sender(&self) -> &PartyId;
 }
@@ -51,10 +51,9 @@ pub fn verify_signature(pk: &PublicKey, signature: &Signature, message: &[u8]) -
     Ok(())
 }
 
-pub fn filter_known_pk(pk: &PublicKey, nodes: &Vec<Node>) -> Result<Node> {
+pub fn filter_known_pk(pk: &[u8], nodes: &Vec<Node>) -> Result<Node> {
     for node in nodes {
-        let candidate_pk = PublicKey::from_bytes(node.pk.bytes.as_slice()).unwrap();
-        if candidate_pk == *pk {
+        if node.pk.bytes == *pk {
             return Ok(node.clone());
         }
     }

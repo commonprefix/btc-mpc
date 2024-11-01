@@ -45,12 +45,12 @@ pub struct SigningSession {
 }
 
 const G1_ELEMENT_BYTE_LENGTH: usize = 48;
-const G2_ELEMENT_BYTE_LENGTH: usize = 96;
+const PROJECTIVE_POINT_BYTE_LENGTH: usize = 33;
 const SCALAR_LENGTH: usize = 32;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct G2Element {
-    pub bytes: Vec<u8>, // TODO: Use G2_ELEMENT_BYTE_LENGTH
+pub struct ProjectivePoint {
+    pub bytes: Vec<u8>, // TODO: Use PROJECTIVE_POINT_BYTE_LENGTH
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,7 +60,7 @@ pub struct G1Element {
 
 pub type PartyId = u16;
 
-pub type PublicPoly = Vec<G2Element>;
+pub type PublicPoly = Vec<ProjectivePoint>;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scalar {
     pub bytes: Vec<u8>,
@@ -68,13 +68,13 @@ pub struct Scalar {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DLNizk {
-    pub A: G2Element,
+    pub A: ProjectivePoint,
     pub z: Scalar,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MultiRecipientEncryption {
-    pub r_g: G2Element,
+    pub r_g: ProjectivePoint,
     pub encs: Vec<Vec<u8>>,
     pub nizk: DLNizk,
 }
@@ -82,7 +82,7 @@ pub struct MultiRecipientEncryption {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Node {
     pub id: PartyId,
-    pub pk: G2Element,
+    pub pk: ProjectivePoint,
     pub weight: u16,
 }
 
@@ -156,14 +156,14 @@ pub struct Message {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DdhTupleNizk {
-    pub A: G2Element,
-    pub B: G2Element,
+    pub A: ProjectivePoint,
+    pub B: ProjectivePoint,
     pub z: Scalar,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecoveryPackage {
-    pub ephemeral_key: G2Element,
+    pub ephemeral_key: ProjectivePoint,
     pub proof: DdhTupleNizk,
 }
 
@@ -210,7 +210,7 @@ impl<'de> Deserialize<'de> for G1Element {
     }
 }
 
-impl Serialize for G2Element {
+impl Serialize for ProjectivePoint {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -220,7 +220,7 @@ impl Serialize for G2Element {
     }
 }
 
-impl<'de> Deserialize<'de> for G2Element {
+impl<'de> Deserialize<'de> for ProjectivePoint {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -228,11 +228,11 @@ impl<'de> Deserialize<'de> for G2Element {
         let s = String::deserialize(deserializer)?;
         let decoded = BASE64_STANDARD.decode(&s).map_err(D::Error::custom)?;
         match decoded.len() {
-            G2_ELEMENT_BYTE_LENGTH => Ok(G2Element { bytes: decoded }),
+            PROJECTIVE_POINT_BYTE_LENGTH => Ok(ProjectivePoint { bytes: decoded }),
             len => Err(D::Error::custom(
                 format_args!(
-                    "Invalid length for G2Element: expected {}, got {}",
-                    G2_ELEMENT_BYTE_LENGTH, len
+                    "Invalid length for ProjectivePoint: expected {}, got {}",
+                    PROJECTIVE_POINT_BYTE_LENGTH, len
                 )
                 .to_string(),
             )),
@@ -413,9 +413,9 @@ impl<'de> Deserialize<'de> for MultiRecipientEncryption {
 
 #[cfg(test)]
 mod tests {
-    use crate::bls::{
-        Complaint, Confirmation, DKGSession, DLNizk, DdhTupleNizk, G2Element, Message,
-        MultiRecipientEncryption, Phase, RecoveryPackage, Scalar,
+    use crate::dkg::{
+        Complaint, Confirmation, DKGSession, DLNizk, DdhTupleNizk, Message,
+        MultiRecipientEncryption, Phase, ProjectivePoint, RecoveryPackage, Scalar,
     };
     use serde_json;
 
@@ -456,7 +456,7 @@ mod tests {
             nodes: vec![
                 Node {
                     id: 0,
-                    pk: G2Element {
+                    pk: ProjectivePoint {
                         bytes: vec![
                             152, 59, 213, 144, 102, 226, 106, 212, 230, 192, 224, 42, 175, 128, 29,
                             19, 21, 105, 194, 246, 18, 165, 34, 139, 141, 77, 141, 90, 58, 60, 64,
@@ -471,7 +471,7 @@ mod tests {
                 },
                 Node {
                     id: 1,
-                    pk: G2Element {
+                    pk: ProjectivePoint {
                         bytes: vec![
                             175, 47, 200, 212, 169, 4, 19, 162, 59, 161, 225, 137, 107, 101, 27,
                             33, 106, 2, 20, 22, 31, 197, 206, 56, 35, 233, 48, 188, 212, 179, 85,
@@ -485,7 +485,7 @@ mod tests {
                 },
                 Node {
                     id: 2,
-                    pk: G2Element {
+                    pk: ProjectivePoint {
                         bytes: vec![
                             176, 91, 191, 157, 235, 90, 3, 11, 48, 235, 194, 108, 11, 141, 110, 79,
                             15, 216, 171, 98, 46, 129, 147, 33, 239, 105, 244, 233, 108, 145, 189,
@@ -703,7 +703,7 @@ mod tests {
         let expected_message = Message {
             sender: 1,
             vss_pk: vec![
-                G2Element {
+                ProjectivePoint {
                     bytes: vec![
                         149, 162, 50, 61, 7, 201, 73, 237, 53, 81, 238, 132, 90, 89, 42, 238, 7,
                         100, 236, 243, 15, 142, 90, 39, 189, 126, 116, 87, 20, 141, 27, 137, 7,
@@ -713,7 +713,7 @@ mod tests {
                         85, 198, 119, 211, 71, 135, 32, 136, 118, 222, 157, 13, 176, 38, 245,
                     ],
                 },
-                G2Element {
+                ProjectivePoint {
                     bytes: vec![
                         132, 195, 34, 185, 122, 40, 218, 46, 184, 34, 43, 102, 167, 112, 196, 204,
                         228, 74, 199, 40, 80, 0, 44, 152, 21, 0, 78, 182, 231, 219, 152, 45, 34,
@@ -723,7 +723,7 @@ mod tests {
                         175, 191, 179, 118, 241, 92, 203, 149, 218, 121, 24, 210, 2, 70,
                     ],
                 },
-                G2Element {
+                ProjectivePoint {
                     bytes: vec![
                         171, 249, 21, 142, 13, 180, 111, 65, 238, 128, 111, 51, 217, 71, 61, 57,
                         89, 77, 54, 120, 46, 20, 196, 23, 181, 95, 51, 176, 150, 231, 203, 154, 78,
@@ -735,7 +735,7 @@ mod tests {
                 },
             ],
             encrypted_shares: MultiRecipientEncryption {
-                r_g: G2Element {
+                r_g: ProjectivePoint {
                     bytes: vec![
                         140, 114, 246, 237, 47, 112, 166, 216, 46, 142, 52, 167, 214, 109, 98, 76,
                         171, 159, 28, 106, 19, 194, 32, 207, 56, 225, 143, 22, 142, 47, 5, 253, 26,
@@ -763,7 +763,7 @@ mod tests {
                     vec![90],
                 ],
                 nizk: DLNizk {
-                    A: G2Element {
+                    A: ProjectivePoint {
                         bytes: vec![
                             130, 64, 63, 146, 249, 162, 225, 130, 206, 177, 44, 106, 91, 46, 55, 6,
                             113, 32, 88, 121, 228, 241, 195, 73, 75, 145, 168, 181, 209, 54, 191,
@@ -816,7 +816,7 @@ mod tests {
             complaints: vec![Complaint {
                 accused_sender: 1,
                 proof: RecoveryPackage {
-                    ephemeral_key: G2Element {
+                    ephemeral_key: ProjectivePoint {
                         bytes: vec![
                             141, 129, 253, 178, 15, 131, 150, 122, 145, 77, 12, 117, 200, 201, 135,
                             217, 140, 173, 153, 222, 48, 144, 30, 202, 59, 149, 249, 12, 170, 198,
@@ -828,7 +828,7 @@ mod tests {
                         ],
                     },
                     proof: DdhTupleNizk {
-                        A: G2Element {
+                        A: ProjectivePoint {
                             bytes: vec![
                                 141, 117, 184, 10, 3, 23, 101, 123, 94, 232, 251, 98, 241, 133, 75,
                                 207, 133, 74, 178, 42, 25, 185, 74, 241, 241, 138, 181, 183, 12,
@@ -839,7 +839,7 @@ mod tests {
                                 213, 171, 12, 171, 73, 67, 186, 129,
                             ],
                         },
-                        B: G2Element {
+                        B: ProjectivePoint {
                             bytes: vec![
                                 140, 35, 12, 57, 80, 101, 71, 58, 14, 169, 113, 33, 185, 108, 250,
                                 221, 93, 209, 97, 200, 89, 6, 200, 18, 187, 41, 128, 147, 28, 144,
@@ -912,7 +912,7 @@ mod tests {
                 nodes: vec![
                     Node {
                         id: 0,
-                        pk: G2Element {
+                        pk: ProjectivePoint {
                             bytes: vec![
                                 152, 59, 213, 144, 102, 226, 106, 212, 230, 192, 224, 42, 175, 128,
                                 29, 19, 21, 105, 194, 246, 18, 165, 34, 139, 141, 77, 141, 90, 58,
@@ -927,7 +927,7 @@ mod tests {
                     },
                     Node {
                         id: 1,
-                        pk: G2Element {
+                        pk: ProjectivePoint {
                             bytes: vec![
                                 175, 47, 200, 212, 169, 4, 19, 162, 59, 161, 225, 137, 107, 101,
                                 27, 33, 106, 2, 20, 22, 31, 197, 206, 56, 35, 233, 48, 188, 212,
@@ -942,7 +942,7 @@ mod tests {
                     },
                     Node {
                         id: 2,
-                        pk: G2Element {
+                        pk: ProjectivePoint {
                             bytes: vec![
                                 176, 91, 191, 157, 235, 90, 3, 11, 48, 235, 194, 108, 11, 141, 110,
                                 79, 15, 216, 171, 98, 46, 129, 147, 33, 239, 105, 244, 233, 108,

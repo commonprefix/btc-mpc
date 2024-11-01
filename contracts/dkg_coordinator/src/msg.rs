@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use primitives::bls::{Confirmation, Message, Node};
+use primitives::dkg::{Confirmation, Message, Node};
 
 #[derive(Serialize, Deserialize)]
 pub enum QueryMsg {

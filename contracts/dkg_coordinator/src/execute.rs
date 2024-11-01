@@ -1,13 +1,14 @@
 pub mod execute {
-    use blst::min_sig::{PublicKey, Signature};
+    use cosmwasm_crypto::secp256k1_verify;
     use cosmwasm_std::{DepsMut, Response, StdError, StdResult};
+    use sha2::{Digest, Sha256};
     use thiserror::Error;
 
     use crate::state::DKG_SESSION;
 
     use primitives::{
-        bls::{Confirmation, DKGSession, Message, Node, Nodes, Phase},
-        utils::{calculate_total_weight, filter_known_pk, verify_signature, HasSender},
+        dkg::{Confirmation, DKGSession, Message, Node, Nodes, Phase},
+        utils::{calculate_total_weight, filter_known_pk, HasSender},
     };
 
     #[derive(Error, Debug)]
@@ -52,19 +53,19 @@ pub mod execute {
 
         let session = session.unwrap();
 
-        let pubkey = PublicKey::from_bytes(pk).map_err(|_| ExecuteError::InvalidPublicKey)?;
-        filter_known_pk(&pubkey, &session.nodes.nodes)
-            .map_err(|_e| ExecuteError::UnknownPublicKey)?;
+        filter_known_pk(&pk, &session.nodes.nodes).map_err(|_e| ExecuteError::UnknownPublicKey)?;
 
-        verify_signature(
-            &pubkey,
-            &Signature::from_bytes(signature)
-                .map_err(|e| ExecuteError::InvalidSignature(format!("{:?}", e)))?,
-            &serde_json::to_string(item)
-                .map_err(|e| ExecuteError::Std(StdError::serialize_err("item", e)))?
-                .as_bytes(),
-        )
-        .map_err(|e| ExecuteError::InvalidSignature(e.to_string()))?;
+        let item_string = serde_json::to_string(item)
+            .map_err(|e| ExecuteError::Std(StdError::serialize_err("item", e)))?;
+        let digest = Sha256::digest(item_string.as_bytes());
+        let valid_signature = secp256k1_verify(&digest, signature, pk)
+            .map_err(|e| ExecuteError::Std(StdError::generic_err(e.to_string())))?;
+
+        if !valid_signature {
+            return Err(ExecuteError::InvalidSignature(
+                ("invalid signature").to_string(),
+            ));
+        }
 
         match item_type {
             "message" => {

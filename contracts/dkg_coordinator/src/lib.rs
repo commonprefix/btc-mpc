@@ -9,7 +9,7 @@ use cosmwasm_std::{
 };
 use execute::execute::{create_session, post_confirmation, post_message};
 use msg::ExecuteMsg;
-use primitives::bls::DKGSession;
+use primitives::dkg::DKGSession;
 use serde::{Deserialize, Serialize};
 use state::DKG_SESSION;
 

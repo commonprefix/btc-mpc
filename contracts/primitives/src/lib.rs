@@ -1,2 +1,2 @@
-pub mod bls;
+pub mod dkg;
 pub mod utils;
