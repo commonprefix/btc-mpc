@@ -232,18 +232,14 @@ mod test {
         modules::auth::model::Address,
         signing_key::key::{Key, SigningKey},
     };
-    use fastcrypto::{
-        bls12381::min_sig::{BLS12381PrivateKey, BLS12381PublicKey},
-        groups::secp256k1::ProjectivePoint,
-        serde_helpers::ToFromByteArray,
-        traits::{Signer, ToFromBytes},
-    };
+    use fastcrypto::{groups::secp256k1::ProjectivePoint, serde_helpers::ToFromByteArray};
     use fastcrypto_tbls::{
         dkg::Party,
         ecies::{PrivateKey, PublicKey},
         nodes::{Node, Nodes},
         random_oracle::RandomOracle,
     };
+    use k256::ecdsa::signature::Signer;
     use rand::thread_rng;
     use serial_test::serial;
 
@@ -267,7 +263,7 @@ mod test {
     fn create_coordinator_instance() -> DkgCoordinator<CosmosEndpoint, Address> {
         let endpoint = CosmosEndpoint::new("./config/osmosis_testnet.yaml");
         let contract_address: Address =
-            "osmo13kps8f4xw8em978ysjgksqh38qgvr6x9yk9ey7694waflnhft0wsmj5skm"
+            "osmo1nhpnyjw4wlwruzf323ghkhjfvvanqfdqg8esw8qpxwfjp2wjw46snx07ht"
                 .parse()
                 .unwrap();
         let key = create_test_key();
@@ -347,28 +343,6 @@ mod test {
         confirmations
     }
 
-    fn testdata() -> (String, String, String) {
-        let message = std::fs::read_to_string("./testdata/message.json")
-            .unwrap()
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>();
-
-        let confirmation = std::fs::read_to_string("./testdata/confirmation.json")
-            .unwrap()
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>();
-
-        let nodes = std::fs::read_to_string("./testdata/nodes.json")
-            .unwrap()
-            .chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>();
-
-        (message, confirmation, nodes)
-    }
-
     #[tokio::test]
     #[serial]
     async fn test_session_creation() {
@@ -402,11 +376,14 @@ mod test {
 
         // create message and sign it
         let message = party.create_message(&mut thread_rng()).unwrap();
-        let sk = BLS12381PrivateKey::from_bytes(&keys[0].0.as_element().to_byte_array()).unwrap();
-        let pk = BLS12381PublicKey::from_bytes(&keys[0].1.as_element().to_byte_array()).unwrap();
         let message_json = serde_json::to_string(&message).unwrap();
         let msg_bytes = message_json.as_bytes();
-        let signature = sk.sign(msg_bytes);
+
+        let sk =
+            k256::ecdsa::SigningKey::from_bytes(&keys[0].0.as_element().to_byte_array().into())
+                .unwrap();
+        let pk = sk.verifying_key();
+        let signature: k256::ecdsa::Signature = sk.sign(&msg_bytes);
 
         // create new session
         assert!(dkg_coordinator
@@ -416,7 +393,7 @@ mod test {
 
         // post message
         assert!(dkg_coordinator
-            .post_message(message.clone(), signature.sig, pk.pubkey)
+            .post_message(message.clone(), signature, *pk)
             .await
             .is_ok());
 
@@ -447,15 +424,17 @@ mod test {
             .is_ok());
 
         // sign confirmation
-        let sk = BLS12381PrivateKey::from_bytes(&keys[0].0.as_element().to_byte_array()).unwrap();
-        let pk = BLS12381PublicKey::from_bytes(&keys[0].1.as_element().to_byte_array()).unwrap();
         let message_json = serde_json::to_string(&confirmations[0]).unwrap();
         let msg_bytes = message_json.as_bytes();
-        let signature = sk.sign(msg_bytes);
+        let sk =
+            k256::ecdsa::SigningKey::from_bytes(&keys[0].0.as_element().to_byte_array().into())
+                .unwrap();
+        let pk = sk.verifying_key();
+        let signature: k256::ecdsa::Signature = sk.sign(&msg_bytes);
 
         // post confirmation
         assert!(dkg_coordinator
-            .post_confirmation(confirmations[0].clone(), signature.sig, pk.pubkey)
+            .post_confirmation(confirmations[0].clone(), signature, *pk)
             .await
             .is_ok());
 

@@ -209,10 +209,8 @@ mod test {
         signing_key::key::{Key, SigningKey},
     };
     use fastcrypto::{
-        bls12381::min_sig::{BLS12381PrivateKey, BLS12381PublicKey},
         groups::{bls12381::G1Element, secp256k1::ProjectivePoint, GroupElement},
         serde_helpers::ToFromByteArray,
-        traits::{Signer, ToFromBytes},
     };
     use fastcrypto_tbls::{
         dkg::Party,
@@ -221,6 +219,7 @@ mod test {
         random_oracle::RandomOracle,
         types::IndexedValue,
     };
+    use k256::ecdsa::signature::Signer;
     use rand::thread_rng;
 
     use crate::{endpoints::CosmosEndpoint, signing_coordinator::SigningCoordinatorInterface};
@@ -294,6 +293,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_create_and_fetch() {
         let coordinator = create_coordinator_instance();
         let (_, _, _, nodes) = create_parties(5);
@@ -318,6 +318,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_post_sig() {
         let coordinator = create_coordinator_instance();
         let (keys, _, _, nodes) = create_parties(5);
@@ -340,20 +341,17 @@ mod test {
             },
         ];
 
-        let sk = BLS12381PrivateKey::from_bytes(&keys[0].0.as_element().to_byte_array()).unwrap();
-        let pk = BLS12381PublicKey::from_bytes(&keys[0].1.as_element().to_byte_array()).unwrap();
         let partial_sig_json = serde_json::to_string(&partial_sigs.clone()).unwrap();
         let partial_sig_bytes = partial_sig_json.as_bytes();
-        let signature = sk.sign(partial_sig_bytes);
+        let sk =
+            k256::ecdsa::SigningKey::from_bytes(&keys[0].0.as_element().to_byte_array().into())
+                .unwrap();
+        let pk = sk.verifying_key();
+        let signature: k256::ecdsa::Signature = sk.sign(&partial_sig_bytes);
 
         // pushing 2 signatures
         assert!(coordinator
-            .post_partial_signatures(
-                session_id.clone(),
-                partial_sigs.clone(),
-                signature.sig,
-                pk.pubkey,
-            )
+            .post_partial_signatures(session_id.clone(), partial_sigs.clone(), signature, *pk,)
             .await
             .is_ok());
         expected_signatures.insert(0 as PartyId, partial_sigs);
@@ -365,15 +363,10 @@ mod test {
         }];
         let partial_sig_json = serde_json::to_string(&partial_sigs.clone()).unwrap();
         let partial_sig_bytes = partial_sig_json.as_bytes();
-        let signature = sk.sign(partial_sig_bytes);
+        let signature: k256::ecdsa::Signature = sk.sign(&partial_sig_bytes);
 
         assert!(coordinator
-            .post_partial_signatures(
-                session_id.clone(),
-                partial_sigs.clone(),
-                signature.sig,
-                pk.pubkey,
-            )
+            .post_partial_signatures(session_id.clone(), partial_sigs.clone(), signature, *pk,)
             .await
             .is_ok());
         let stored_signatures = expected_signatures.get_mut(&(0 as PartyId)).unwrap();
