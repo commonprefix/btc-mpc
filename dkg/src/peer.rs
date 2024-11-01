@@ -581,12 +581,12 @@ mod test {
 
         // Create a DKG session.
         let nodes = create_nodes(vec![
-            (public_key_1, 4 as u16),
-            (public_key_2, 5 as u16),
-            (public_key_3, 7 as u16),
+            (public_key_1, 4_u16),
+            (public_key_2, 5_u16),
+            (public_key_3, 7_u16),
         ]);
         assert!(dkg_coordinator_1
-            .create_session(6 as u16, nodes)
+            .create_session(6_u16, nodes)
             .await
             .is_ok());
 
