@@ -6,7 +6,7 @@ pub mod execute {
     use crate::state::DKG_SESSION;
 
     use primitives::{
-        bls::{Confirmation, DKGSession, Message, Node, Nodes, Phase},
+        bls::{Confirmation, DKGSession, Message, Node, Nodes, PartyId, Phase},
         utils::{calculate_total_weight, filter_known_pk, verify_signature, HasSender},
     };
 
@@ -75,7 +75,7 @@ pub mod execute {
             ItemType::Message => {
                 // Check if message is a duplicate
                 if session.phase < Phase::Phase2
-                    && is_duplicate_sender(&session.messages, &item.get_sender().to_string())
+                    && is_duplicate_sender(&session.messages, item.get_sender())
                 {
                     return Err(ExecuteError::DuplicateMessage);
                 }
@@ -83,7 +83,7 @@ pub mod execute {
             ItemType::Confirmation => {
                 // Check if confirmation is a duplicate
                 if session.phase < Phase::Phase3
-                    && is_duplicate_sender(&session.confirmations, &item.get_sender().to_string())
+                    && is_duplicate_sender(&session.confirmations, item.get_sender())
                 {
                     return Err(ExecuteError::DuplicateConfirmation);
                 }
@@ -176,9 +176,7 @@ pub mod execute {
         result.map_err(|e| e.into())
     }
 
-    fn is_duplicate_sender<T: HasSender>(items: &[T], sender: &str) -> bool {
-        items
-            .iter()
-            .any(|item| item.get_sender().to_string() == sender)
+    fn is_duplicate_sender<T: HasSender>(items: &[T], sender: &PartyId) -> bool {
+        items.iter().any(|item| item.get_sender() == sender)
     }
 }
