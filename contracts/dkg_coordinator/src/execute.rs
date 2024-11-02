@@ -30,6 +30,11 @@ pub mod execute {
         InvalidPublicKey,
     }
 
+    enum ItemType {
+        Message,
+        Confirmation,
+    }
+
     impl From<ExecuteError> for StdError {
         fn from(error: ExecuteError) -> Self {
             StdError::generic_err(error.to_string())
@@ -41,7 +46,7 @@ pub mod execute {
         item: &T,
         signature: &[u8],
         pk: &[u8],
-        item_type: &str,
+        item_type: ItemType,
     ) -> Result<DKGSession, ExecuteError> {
         // Check if session exists
         let session = DKG_SESSION.load(deps.storage)?;
@@ -67,32 +72,24 @@ pub mod execute {
         .map_err(|e| ExecuteError::InvalidSignature(e.to_string()))?;
 
         match item_type {
-            "message" => {
+            ItemType::Message => {
                 // Check if message is a duplicate
-                let is_duplicate = session
-                    .messages
-                    .iter()
-                    .any(|m| m.sender == *item.get_sender());
-
-                if session.phase < Phase::Phase2 && is_duplicate {
+                if session.phase < Phase::Phase2
+                    && is_duplicate_sender(&session.messages, &item.get_sender().to_string())
+                {
                     return Err(ExecuteError::DuplicateMessage);
                 }
-                Ok(session)
             }
-            "confirmation" => {
+            ItemType::Confirmation => {
                 // Check if confirmation is a duplicate
-                let is_duplicate = session
-                    .confirmations
-                    .iter()
-                    .any(|c| c.sender == *item.get_sender());
-
-                if session.phase < Phase::Phase3 && is_duplicate {
+                if session.phase < Phase::Phase3
+                    && is_duplicate_sender(&session.confirmations, &item.get_sender().to_string())
+                {
                     return Err(ExecuteError::DuplicateConfirmation);
                 }
-                Ok(session)
             }
-            _ => Err(ExecuteError::UnknownItemType),
         }
+        Ok(session)
     }
 
     fn update_phase(session: &mut DKGSession) -> StdResult<()> {
@@ -132,21 +129,16 @@ pub mod execute {
         signature: Vec<u8>,
         pk: Vec<u8>,
     ) -> StdResult<Response> {
-        let result = verify_and_check_duplicate(&deps, &message, &signature, &pk, "message");
-
-        if let Err(err) = result {
-            return Err(err.into());
-        }
-
-        let mut session = result.unwrap();
-
-        // Add message to session
+        let mut session = map_error(verify_and_check_duplicate(
+            &deps,
+            &message,
+            &signature,
+            &pk,
+            ItemType::Message,
+        ))?;
         session.messages.push(message);
-
         update_phase(&mut session)?;
-
         DKG_SESSION.save(deps.storage, &Some(session))?;
-
         Ok(Response::new().add_attribute("action", "post_message"))
     }
 
@@ -156,8 +148,13 @@ pub mod execute {
         signature: Vec<u8>,
         pk: Vec<u8>,
     ) -> StdResult<Response> {
-        let result =
-            verify_and_check_duplicate(&deps, &confirmation, &signature, &pk, "confirmation");
+        let result = verify_and_check_duplicate(
+            &deps,
+            &confirmation,
+            &signature,
+            &pk,
+            ItemType::Confirmation,
+        );
 
         if let Err(err) = result {
             return Err(err.into());
@@ -173,5 +170,15 @@ pub mod execute {
         DKG_SESSION.save(deps.storage, &Some(session))?;
 
         Ok(Response::new().add_attribute("action", "post_confirmation"))
+    }
+
+    fn map_error<T>(result: Result<T, ExecuteError>) -> StdResult<T> {
+        result.map_err(|e| e.into())
+    }
+
+    fn is_duplicate_sender<T: HasSender>(items: &[T], sender: &str) -> bool {
+        items
+            .iter()
+            .any(|item| item.get_sender().to_string() == sender)
     }
 }
