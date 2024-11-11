@@ -475,7 +475,7 @@ mod test {
             &self,
             confirmation: Confirmation,
             signature: blst::min_sig::Signature,
-            pk: blst::min_sig::PublicKey,
+            _pk: blst::min_sig::PublicKey,
         ) -> Result<Confirmation, DKGError> {
             let mut session = self.session.lock().unwrap();
             let session = session.as_mut().unwrap();
@@ -585,10 +585,7 @@ mod test {
             (public_key_2, 5_u16),
             (public_key_3, 7_u16),
         ]);
-        assert!(dkg_coordinator_1
-            .create_session(6_u16, nodes)
-            .await
-            .is_ok());
+        assert!(dkg_coordinator_1.create_session(6_u16, nodes).await.is_ok());
 
         // Message phase.
         assert_eq!(
