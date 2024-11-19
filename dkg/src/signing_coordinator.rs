@@ -49,6 +49,13 @@ where
         signature: k256::ecdsa::Signature,
         pk: k256::ecdsa::VerifyingKey,
     ) -> Result<Vec<PartialSignature>, SigningError>;
+
+    async fn post_commitment(&self) -> Result<(), SigningError>;
+
+    // could maybe be implemented on the smart contract
+    async fn post_signing_package(&self) -> Result<(), SigningError>;
+
+    async fn post_signature_share(&self) -> Result<(), SigningError>;
 }
 
 pub struct SigningCoordinator<C, A> {
@@ -85,6 +92,18 @@ impl SigningCoordinator<CosmosEndpoint, Address> {
 impl SigningCoordinatorInterface<IndexedValue<G1Element>>
     for SigningCoordinator<CosmosEndpoint, Address>
 {
+    async fn post_commitment(&self) -> Result<(), SigningError> {
+        unimplemented!()
+    }
+
+    async fn post_signature_share(&self) -> Result<(), SigningError> {
+        unimplemented!()
+    }
+
+    async fn post_signing_package(&self) -> Result<(), SigningError> {
+        unimplemented!()
+    }
+
     async fn create_session(
         &self,
         nodes: Nodes<ProjectivePoint>,
@@ -202,7 +221,10 @@ impl SigningCoordinatorInterface<IndexedValue<G1Element>>
 
 #[cfg(test)]
 mod test {
-    use std::{collections::HashMap, num::NonZero};
+    use std::{
+        collections::{BTreeMap, HashMap},
+        num::NonZero,
+    };
 
     use cosm_tome::{
         modules::auth::model::Address,
@@ -225,6 +247,9 @@ mod test {
     use crate::{endpoints::CosmosEndpoint, signing_coordinator::SigningCoordinatorInterface};
 
     use super::SigningCoordinator;
+    use frost_secp256k1::{
+        self as frost, round1::SigningCommitments, round2::SignatureShare, SigningPackage,
+    };
 
     fn create_test_key() -> SigningKey {
         SigningKey {
@@ -374,5 +399,97 @@ mod test {
 
         let session = coordinator.fetch_session(session_id.clone()).await.unwrap();
         assert_eq!(session.sigs, expected_signatures);
+    }
+
+    #[tokio::test]
+    async fn frost_example() {
+        let mut rng = thread_rng();
+        let max_signers = 5;
+        let min_signers = 3;
+        let (shares, pubkey_package) = frost::keys::generate_with_dealer(
+            max_signers,
+            min_signers,
+            frost::keys::IdentifierList::Default,
+            &mut rng,
+        )
+        .unwrap();
+
+        let mut key_packages: BTreeMap<_, _> = BTreeMap::new();
+
+        for (identifier, secret_share) in shares {
+            let key_package = frost::keys::KeyPackage::try_from(secret_share).unwrap();
+            key_packages.insert(identifier, key_package);
+        }
+
+        let mut nonces_map = BTreeMap::new();
+        let mut commitments_map = BTreeMap::new();
+
+        ////////////////////////////////////////////////////////////////////////////
+        // Round 1: generating nonces and signing commitments for each participant
+        ////////////////////////////////////////////////////////////////////////////
+
+        // In practice, each iteration of this loop will be executed by its respective participant.
+        for participant_index in 1..=min_signers {
+            let participant_identifier = participant_index.try_into().expect("should be nonzero");
+            let key_package = &key_packages[&participant_identifier];
+            // Generate one (1) nonce and one SigningCommitments instance for each
+            // participant, up to _threshold_.
+            let (nonces, commitments) =
+                frost::round1::commit(key_package.signing_share(), &mut rng);
+            // In practice, the nonces must be kept by the participant to use in the
+            // next round, while the commitment must be sent to the coordinator
+            // (or to every other participant if there is no coordinator) using
+            // an authenticated channel.
+            nonces_map.insert(participant_identifier, nonces);
+            commitments_map.insert(participant_identifier, commitments);
+        }
+
+        // This is what the signature aggregator / coordinator needs to do:
+        // - decide what message to sign
+        // - take one (unused) commitment per signing participant
+        let mut signature_shares = BTreeMap::new();
+        let message = "message to sign".as_bytes();
+        let signing_package = frost::SigningPackage::new(commitments_map, message);
+
+        ////////////////////////////////////////////////////////////////////////////
+        // Round 2: each participant generates their signature share
+        ////////////////////////////////////////////////////////////////////////////
+
+        // In practice, each iteration of this loop will be executed by its respective participant.
+        for participant_identifier in nonces_map.keys() {
+            let key_package = &key_packages[participant_identifier];
+
+            let nonces = &nonces_map[participant_identifier];
+
+            // Each participant generates their signature share.
+            let signature_share =
+                frost::round2::sign(&signing_package, nonces, key_package).unwrap();
+
+            // In practice, the signature share must be sent to the Coordinator
+            // using an authenticated channel.
+            signature_shares.insert(*participant_identifier, signature_share);
+        }
+
+        let participant_index: u16 = 1;
+        let participant_identifier = participant_index.try_into().expect("should be nonzero");
+        let share = signature_shares.get(&participant_identifier).unwrap();
+
+        ////////////////////////////////////////////////////////////////////////////
+        // Aggregation: collects the signing shares from all participants,
+        // generates the final signature.
+        ////////////////////////////////////////////////////////////////////////////
+
+        // Aggregate (also verifies the signature shares)
+        let group_signature =
+            frost::aggregate(&signing_package, &signature_shares, &pubkey_package).unwrap();
+
+        // Check that the threshold signature can be verified by the group public
+        // key (the verification key).
+        let is_signature_valid = pubkey_package
+            .verifying_key()
+            .verify(message, &group_signature)
+            .is_ok();
+        assert!(is_signature_valid);
+        assert!(false, "worked")
     }
 }
