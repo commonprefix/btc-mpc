@@ -1,51 +1,53 @@
-use crate::dkg_coordinator::{DKGPhase, DKGSession, DkgCoordinatorInterface, Message};
-use crate::error::{DKGError, SigningError, VerificationError};
-use crate::signing_coordinator::SigningCoordinatorInterface;
-use fastcrypto::groups::bls12381::G1Element;
-use fastcrypto::groups::secp256k1::ProjectivePoint;
-use fastcrypto::serde_helpers::ToFromByteArray;
-use fastcrypto_tbls::dkg::{Confirmation, Output, Party};
-use fastcrypto_tbls::dkg_v0::UsedProcessedMessages;
-use fastcrypto_tbls::ecies::{PrivateKey, PublicKey};
-use fastcrypto_tbls::random_oracle::RandomOracle;
-use fastcrypto_tbls::types::IndexedValue;
-use k256::ecdsa::Signature;
-use k256::ecdsa::{signature::Signer, SigningKey};
+use fastcrypto::{
+    groups::{secp256k1::ProjectivePoint as FastCryptoProjectivePoint, GroupElement},
+    serde_helpers::ToFromByteArray,
+};
+use fastcrypto_tbls::{
+    dkg::{Confirmation, Output, Party},
+    dkg_v0::UsedProcessedMessages,
+    ecies::{PrivateKey, PublicKey},
+    random_oracle::RandomOracle,
+};
+use k256::ecdsa::{signature::Signer, Signature, SigningKey};
 use rand::thread_rng;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, PartialEq)]
+use crate::{
+    dkg_coordinator::{DKGPhase, DKGSession, DkgCoordinatorInterface, Message},
+    error::DKGError,
+};
+use k256::ecdsa::SigningKey as K256SigningKey;
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum DKGResult {
     NoActiveSession,
     MessageAlreadyPosted,
     MessagePosted,
     ConfirmationAlreadyPosted,
     ConfirmationPosted,
-    OutputAlreadyConstructed,
+    SharesAlreadyConstructed,
     OutputConstructed,
 }
 
-#[derive(Debug)]
-pub enum SigningResult {
-    SignedOutstandingSessions,
-    SessionNotFound,
-}
-
-#[derive(Debug)]
-pub enum VerificationResult {
-    VerifiedSignature,
-    VerificationFailed,
-}
-
-pub struct Peer {
-    private_key: PrivateKey<ProjectivePoint>,
-    pub public_key: PublicKey<ProjectivePoint>,
-    dkg_output: Option<Output<ProjectivePoint, ProjectivePoint>>,
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DKGPeer {
+    private_key: PrivateKey<FastCryptoProjectivePoint>,
+    pub public_key: PublicKey<FastCryptoProjectivePoint>,
+    pub dkg_output: Option<Output<FastCryptoProjectivePoint, FastCryptoProjectivePoint>>,
     dkg_session: Option<DKGSession>,
 }
 
-impl Peer {
-    pub fn new(private_key: PrivateKey<ProjectivePoint>) -> Self {
-        let public_key = PublicKey::<ProjectivePoint>::from_private_key(&private_key);
+impl DKGPeer {
+    pub fn new(secp256k1_sk: &K256SigningKey) -> Self {
+        let secp256k1_sk_bytes: [u8; 32] = secp256k1_sk.to_bytes().into();
+        let private_key: PrivateKey<FastCryptoProjectivePoint> =
+            PrivateKey::<FastCryptoProjectivePoint>::from(
+                <FastCryptoProjectivePoint as GroupElement>::ScalarType::from_byte_array(
+                    &secp256k1_sk_bytes,
+                )
+                .expect("Invalid private_key"),
+            );
+        let public_key = PublicKey::<FastCryptoProjectivePoint>::from_private_key(&private_key);
 
         Self {
             private_key,
@@ -66,13 +68,13 @@ impl Peer {
     fn get_dkg_party(
         &self,
         random_oracle: RandomOracle,
-    ) -> Option<Party<ProjectivePoint, ProjectivePoint>> {
+    ) -> Option<Party<FastCryptoProjectivePoint, FastCryptoProjectivePoint>> {
         if self.dkg_session.is_none() {
             return None;
         }
 
         Some(
-            Party::<ProjectivePoint, ProjectivePoint>::new(
+            Party::<FastCryptoProjectivePoint, FastCryptoProjectivePoint>::new(
                 self.private_key.clone(),
                 self.dkg_session.as_ref().unwrap().nodes.clone(),
                 self.dkg_session.as_ref().unwrap().threshold,
@@ -127,7 +129,7 @@ impl Peer {
         Ok(message)
     }
 
-    fn dkg_confirmation_posted(&self) -> Option<Confirmation<ProjectivePoint>> {
+    fn dkg_confirmation_posted(&self) -> Option<Confirmation<FastCryptoProjectivePoint>> {
         if self.dkg_session.is_none() {
             return None;
         }
@@ -154,8 +156,8 @@ impl Peer {
         &self,
         random_oracle: RandomOracle,
     ) -> Option<(
-        Confirmation<ProjectivePoint>,
-        UsedProcessedMessages<ProjectivePoint, ProjectivePoint>,
+        Confirmation<FastCryptoProjectivePoint>,
+        UsedProcessedMessages<FastCryptoProjectivePoint, FastCryptoProjectivePoint>,
     )> {
         if self.dkg_session.is_none() {
             return None;
@@ -183,7 +185,7 @@ impl Peer {
         &mut self,
         dkg_coordinator: &DC,
         random_oracle: RandomOracle,
-    ) -> Result<Confirmation<ProjectivePoint>, DKGError> {
+    ) -> Result<Confirmation<FastCryptoProjectivePoint>, DKGError> {
         let (confirmation, _) = self.create_dkg_confirmation(random_oracle).unwrap();
 
         // TODO: DRY
@@ -199,24 +201,23 @@ impl Peer {
         Ok(confirmation)
     }
 
-    async fn construct_dkg_output(
+    async fn construct_dkg_shares(
         &mut self,
         random_oracle: RandomOracle,
-    ) -> Result<Output<ProjectivePoint, ProjectivePoint>, DKGError> {
+    ) -> Result<Output<FastCryptoProjectivePoint, FastCryptoProjectivePoint>, DKGError> {
         let dkg_party = self.get_dkg_party(random_oracle.clone()).unwrap();
         let (_, used_messages) = self.create_dkg_confirmation(random_oracle).unwrap();
 
-        self.dkg_output = Some(
-            dkg_party
-                .complete(
-                    &used_messages,
-                    &self.dkg_session.as_ref().unwrap().confirmations,
-                    &mut thread_rng(),
-                )
-                .unwrap(),
-        );
+        let fastcrypto_dkg_output = dkg_party
+            .complete(
+                &used_messages,
+                &self.dkg_session.as_ref().unwrap().confirmations,
+                &mut thread_rng(),
+            )
+            .unwrap();
 
-        Ok(self.dkg_output.clone().unwrap())
+        self.dkg_output = Some(fastcrypto_dkg_output.clone());
+        Ok(fastcrypto_dkg_output)
     }
 
     pub async fn dkg_step<DC: DkgCoordinatorInterface>(
@@ -258,20 +259,20 @@ impl Peer {
             }
             DKGPhase::Phase4 => {
                 if self.dkg_output.is_none() {
-                    self.construct_dkg_output(random_oracle).await?;
+                    self.construct_dkg_shares(random_oracle).await?;
                     log::info!("DKG output constructed.");
                     return Ok(DKGResult::OutputConstructed);
                 }
 
                 log::info!("DKG output already constructed.");
-                Ok(DKGResult::OutputAlreadyConstructed)
+                Ok(DKGResult::SharesAlreadyConstructed)
             }
         }
     }
 
-    pub fn get_weight(&self) -> Result<u16, SigningError> {
+    pub fn get_weight(&self) -> Result<u16, DKGError> {
         if self.dkg_output.is_none() {
-            return Err(SigningError::DKGPending);
+            return Err(DKGError::DKGPending);
         }
 
         Ok(self
@@ -284,76 +285,8 @@ impl Peer {
             .len() as u16)
     }
 
-    pub fn partial_sign(
-        &self,
-        payload: &[u8],
-    ) -> Result<Vec<IndexedValue<G1Element>>, SigningError> {
-        if self.dkg_output.is_none() {
-            return Err(SigningError::DKGPending);
-        }
-
-        todo!("Partial signing with secp256k1 not implemented yet");
-    }
-
-    // TODO: receive partial signatures and check if I have signed or not
-    pub async fn sign<SC: SigningCoordinatorInterface<IndexedValue<G1Element>>>(
-        &mut self,
-        signing_coordinator: &SC,
-        session_id: &String,
-    ) -> Result<SigningResult, SigningError> {
-        let session = signing_coordinator.fetch_session(session_id.clone()).await;
-        if session.is_err() {
-            log::info!("Cannot find session {}", session_id);
-            return Err(SigningError::ErrorFetchingSession);
-        }
-        let session = session.unwrap();
-
-        let payload_bytes = session.payload.as_slice();
-        let payload_str = std::str::from_utf8(&payload_bytes).unwrap();
-        log::info!("Signing '{}'", payload_str);
-        let partial_signatures = self.partial_sign(&payload_bytes).unwrap();
-        // TODO: DRY
-        let sk =
-            SigningKey::from_bytes(&self.private_key.as_element().to_byte_array().into()).unwrap();
-        let pk = sk.verifying_key();
-        let signature: Signature = sk.sign(
-            &serde_json::to_string(&partial_signatures)
-                .unwrap()
-                .as_bytes(),
-        );
-
-        signing_coordinator
-            .post_partial_signatures(
-                session.session_id.clone(),
-                partial_signatures,
-                signature,
-                *pk,
-            )
-            .await?;
-        Ok(SigningResult::SignedOutstandingSessions)
-    }
-
-    pub async fn verify<SC: SigningCoordinatorInterface<IndexedValue<G1Element>>>(
-        &mut self,
-        random_oracle: RandomOracle,
-        signing_coordinator: &SC,
-        session_id: &String,
-    ) -> Result<VerificationResult, VerificationError> {
-        let session = signing_coordinator.fetch_session(session_id.clone()).await;
-        if session.is_err() {
-            log::info!("Cannot find session {}", session_id);
-            return Err(VerificationError::ErrorFetchingSession);
-        }
-        let session = session.unwrap();
-        let signatures = session.sigs.values().cloned().flatten().collect::<Vec<_>>();
-        let dkg_party = self.get_dkg_party(random_oracle.clone());
-        if dkg_party.is_none() || self.dkg_output.is_none() {
-            return Err(VerificationError::DKGPending);
-        }
-        let dkg_party = dkg_party.unwrap();
-        let dkg_output = self.dkg_output.clone().unwrap();
-
-        todo!("Verify & aggregate partial signatures with secp256k1 not implemented yet");
+    pub fn dkg_completed(&self) -> bool {
+        self.dkg_output.is_some()
     }
 }
 
@@ -361,19 +294,18 @@ impl Peer {
 mod test {
     use std::sync::{Arc, Mutex};
 
-    use fastcrypto::groups::secp256k1::ProjectivePoint;
+    use fastcrypto::groups::secp256k1::ProjectivePoint as FastcryptoProjectivePoint;
     use fastcrypto_tbls::{
-        ecies::{PrivateKey, PublicKey},
+        ecies::PublicKey,
         nodes::{Node, Nodes},
         random_oracle::RandomOracle,
     };
-    use k256::ecdsa::{Signature, VerifyingKey};
-    use rand::thread_rng;
+    use k256::ecdsa::{Signature, SigningKey as K256SigningKey, VerifyingKey};
 
     use crate::{
         dkg_coordinator::{Confirmation, DKGPhase, DKGSession, DkgCoordinatorInterface, Message},
+        dkg_peer::{DKGPeer, DKGResult},
         error::DKGError,
-        peer::{DKGResult, Peer},
     };
 
     pub struct TestDkgCoordinator {
@@ -384,7 +316,7 @@ mod test {
         async fn create_session(
             &self,
             threshold: u16,
-            nodes: Vec<Node<ProjectivePoint>>,
+            nodes: Vec<Node<FastcryptoProjectivePoint>>,
         ) -> Result<DKGSession, DKGError> {
             let mut session = self.session.lock().unwrap();
             *session = Some(DKGSession {
@@ -405,8 +337,8 @@ mod test {
         async fn post_message(
             &self,
             message: Message,
-            signature: Signature,
-            pk: VerifyingKey,
+            _signature: Signature,
+            _pk: VerifyingKey,
         ) -> Result<Message, DKGError> {
             let mut session = self.session.lock().unwrap();
             let session = session.as_mut().unwrap();
@@ -448,8 +380,8 @@ mod test {
         async fn post_confirmation(
             &self,
             confirmation: Confirmation,
-            signature: Signature,
-            pk: VerifyingKey,
+            _signature: Signature,
+            _pk: VerifyingKey,
         ) -> Result<Confirmation, DKGError> {
             let mut session = self.session.lock().unwrap();
             let session = session.as_mut().unwrap();
@@ -492,18 +424,9 @@ mod test {
         }
     }
 
-    pub fn create_test_key_pair() -> (PrivateKey<ProjectivePoint>, PublicKey<ProjectivePoint>) {
-        let private_key: PrivateKey<ProjectivePoint> =
-            PrivateKey::<ProjectivePoint>::new(&mut thread_rng());
-        let public_key: PublicKey<ProjectivePoint> =
-            PublicKey::<ProjectivePoint>::from_private_key(&private_key);
-
-        (private_key, public_key)
-    }
-
     pub fn create_nodes(
-        nodes: Vec<(PublicKey<ProjectivePoint>, u16)>,
-    ) -> Vec<Node<ProjectivePoint>> {
+        nodes: Vec<(PublicKey<FastcryptoProjectivePoint>, u16)>,
+    ) -> Vec<Node<FastcryptoProjectivePoint>> {
         nodes
             .iter()
             .enumerate()
@@ -515,14 +438,37 @@ mod test {
             .collect()
     }
 
+    fn get_private_keys() -> (K256SigningKey, K256SigningKey, K256SigningKey) {
+        let file_path = "testdata/peer_secp256k1_sk/peer_1.json";
+        let file_content = std::fs::read_to_string(file_path).expect("Unable to read file");
+        let secp256k1_bytes_1: [u8; 32] =
+            serde_json::from_str(&file_content).expect("JSON was not well-formatted");
+        let secp256k1_sk_1: K256SigningKey =
+            K256SigningKey::from_bytes(&secp256k1_bytes_1.into()).unwrap();
+
+        let file_path = "testdata/peer_secp256k1_sk/peer_2.json";
+        let file_content = std::fs::read_to_string(file_path).expect("Unable to read file");
+        let secp256k1_bytes_2: [u8; 32] =
+            serde_json::from_str(&file_content).expect("JSON was not well-formatted");
+        let secp256k1_sk_2: K256SigningKey =
+            K256SigningKey::from_bytes(&secp256k1_bytes_2.into()).unwrap();
+
+        let file_path = "testdata/peer_secp256k1_sk/peer_3.json";
+        let file_content = std::fs::read_to_string(file_path).expect("Unable to read file");
+        let secp256k1_bytes_3: [u8; 32] =
+            serde_json::from_str(&file_content).expect("JSON was not well-formatted");
+        let secp256k1_sk_3: K256SigningKey =
+            K256SigningKey::from_bytes(&secp256k1_bytes_3.into()).unwrap();
+
+        (secp256k1_sk_1, secp256k1_sk_2, secp256k1_sk_3)
+    }
+
     #[tokio::test]
     async fn successful_dkg() {
-        let (private_key_1, public_key_1) = create_test_key_pair();
-        let (private_key_2, public_key_2) = create_test_key_pair();
-        let (private_key_3, public_key_3) = create_test_key_pair();
-        let mut node_1 = Peer::new(private_key_1);
-        let mut node_2 = Peer::new(private_key_2);
-        let mut node_3 = Peer::new(private_key_3);
+        let (private_key_1, private_key_2, private_key_3) = get_private_keys();
+        let mut node_1 = DKGPeer::new(&private_key_1);
+        let mut node_2 = DKGPeer::new(&private_key_2);
+        let mut node_3 = DKGPeer::new(&private_key_3);
 
         let session = Arc::new(Mutex::new(None));
         let dkg_coordinator_1 = TestDkgCoordinator {
@@ -558,14 +504,11 @@ mod test {
 
         // Create a DKG session.
         let nodes = create_nodes(vec![
-            (public_key_1, 4_u16),
-            (public_key_2, 5_u16),
-            (public_key_3, 7_u16),
+            (node_1.clone().public_key, 4_u16),
+            (node_2.clone().public_key, 5_u16),
+            (node_3.clone().public_key, 7_u16),
         ]);
-        assert!(dkg_coordinator_1
-            .create_session(6_u16, nodes)
-            .await
-            .is_ok());
+        assert!(dkg_coordinator_1.create_session(6_u16, nodes).await.is_ok());
 
         // Message phase.
         assert_eq!(
@@ -633,7 +576,7 @@ mod test {
             node_1
                 .dkg_step(&dkg_coordinator_1, random_oracle.clone())
                 .await,
-            Ok(DKGResult::OutputAlreadyConstructed)
+            Ok(DKGResult::SharesAlreadyConstructed)
         );
 
         assert_eq!(
@@ -646,7 +589,7 @@ mod test {
             node_2
                 .dkg_step(&dkg_coordinator_2, random_oracle.clone())
                 .await,
-            Ok(DKGResult::OutputAlreadyConstructed)
+            Ok(DKGResult::SharesAlreadyConstructed)
         );
 
         assert_eq!(
@@ -659,7 +602,7 @@ mod test {
             node_3
                 .dkg_step(&dkg_coordinator_3, random_oracle.clone())
                 .await,
-            Ok(DKGResult::OutputAlreadyConstructed)
+            Ok(DKGResult::SharesAlreadyConstructed)
         );
 
         assert_eq!(node_1.get_weight().unwrap(), 4);

@@ -1,19 +1,20 @@
 use clap::Parser;
 use cosm_tome::modules::auth::model::Address;
 use cosm_tome::signing_key::key::{Key, SigningKey};
-use dkg::dkg_coordinator::DkgCoordinatorInterface;
+use dkg::dkg_coordinator::{DkgCoordinator, DkgCoordinatorInterface};
+use dkg::dkg_peer::{DKGPeer, DKGResult};
 use dkg::endpoints::CosmosEndpoint;
-use dkg::peer::{DKGResult, SigningResult, VerificationResult};
 use dkg::signing_coordinator::{self, SigningCoordinatorInterface};
-use dkg::{dkg_coordinator, peer::Peer};
+use dkg::signing_peer::{SigningPeer, SigningResult, VerificationResult};
 use fastcrypto::{
     encoding::{Encoding, Hex},
     groups::{secp256k1::ProjectivePoint, GroupElement},
     serde_helpers::ToFromByteArray,
 };
-use fastcrypto_tbls::ecies::{PrivateKey, PublicKey};
-use fastcrypto_tbls::nodes::{Node, Nodes};
+use fastcrypto_tbls::ecies::PublicKey;
+use fastcrypto_tbls::nodes::Node;
 use fastcrypto_tbls::random_oracle::RandomOracle;
+use k256::ecdsa::SigningKey as K256SigningKey;
 use log;
 use serde_json::error::Error;
 use std::path::PathBuf;
@@ -81,9 +82,7 @@ fn create_parties() -> Vec<Node<ProjectivePoint>> {
 
 pub struct MyPrivateKey<G: GroupElement>(pub G::ScalarType);
 
-async fn create_dkg_session(
-    dkg_coordinator: &dkg_coordinator::DkgCoordinator<CosmosEndpoint, Address>,
-) {
+async fn create_dkg_session(dkg_coordinator: &DkgCoordinator<CosmosEndpoint, Address>) {
     log::info!("Creating new DKG session");
     let threshold = 5;
     let nodes = create_parties();
@@ -95,8 +94,8 @@ async fn create_dkg_session(
 }
 
 async fn join_dkg_session(
-    peer: &mut Peer,
-    dkg_coordinator: &dkg_coordinator::DkgCoordinator<CosmosEndpoint, Address>,
+    peer: &mut DKGPeer,
+    dkg_coordinator: &DkgCoordinator<CosmosEndpoint, Address>,
     random_oracle: &RandomOracle,
 ) {
     loop {
@@ -115,6 +114,7 @@ async fn join_dkg_session(
 }
 
 async fn create_signing_session(
+    signing_peer: &SigningPeer,
     signing_coordinator: &signing_coordinator::SigningCoordinator<CosmosEndpoint, Address>,
 ) {
     log::info!("Creating new Signing Session");
@@ -125,40 +125,71 @@ async fn create_signing_session(
         .expect("Failed to read line");
     let payload = payload.trim();
 
-    let nodes = Nodes::new(create_parties()).unwrap();
     let session_id = signing_coordinator
-        .create_session(nodes, payload.as_bytes().to_vec())
+        .create_session(signing_peer.nodes.clone(), payload.as_bytes().to_vec())
         .await
         .unwrap();
     log::info!("Created Signing Session with ID: {}", session_id);
 }
 
-async fn join_signing_session(
-    peer: &mut Peer,
+async fn commit_signing_session(
+    peer: &mut SigningPeer,
     signing_coordinator: &signing_coordinator::SigningCoordinator<CosmosEndpoint, Address>,
 ) {
-    println!("Enter a session ID for signing:");
+    println!("Enter a session ID to commit:");
     let mut session_id = String::new();
     std::io::stdin()
         .read_line(&mut session_id)
         .expect("Failed to read line");
     session_id = session_id.trim().to_string();
 
-    match peer.sign(signing_coordinator, &session_id).await {
-        Ok(SigningResult::SignedOutstandingSessions) => {
-            log::info!("Successfully signed for session {}.", session_id)
+    match peer
+        .commit_to_signing_session(signing_coordinator, &session_id)
+        .await
+    {
+        Ok(SigningResult::CommitmentPosted) => {
+            log::info!("Successfully committed to signing session {}.", session_id)
         }
         Ok(SigningResult::SessionNotFound) => {
             log::info!("Session {} not found.", session_id)
         }
         Err(e) => log::error!("Failed to sign the session: {}", e),
+        _ => log::error!(
+            "Unexpected error occurred while committing to signing session: {}",
+            session_id
+        ),
+    }
+}
+
+async fn partially_sign_signing_session(
+    peer: &mut SigningPeer,
+    signing_coordinator: &signing_coordinator::SigningCoordinator<CosmosEndpoint, Address>,
+) {
+    println!("Enter a session ID for partial signing:");
+    let mut session_id = String::new();
+    std::io::stdin()
+        .read_line(&mut session_id)
+        .expect("Failed to read line");
+    session_id = session_id.trim().to_string();
+
+    match peer.partially_sign(signing_coordinator, &session_id).await {
+        Ok(SigningResult::PartiallySignedSession) => {
+            log::info!("Successfully partially signed session {}.", session_id)
+        }
+        Ok(SigningResult::SessionNotFound) => {
+            log::info!("Session {} not found.", session_id)
+        }
+        Err(e) => log::error!("Failed to sign the session: {}", e),
+        _ => log::error!(
+            "Unexpected error occurred while partially signing session: {}",
+            session_id
+        ),
     }
 }
 
 async fn verify_signing_session(
-    peer: &mut Peer,
+    peer: &mut SigningPeer,
     signing_coordinator: &signing_coordinator::SigningCoordinator<CosmosEndpoint, Address>,
-    random_oracle: &RandomOracle,
 ) {
     println!("Enter a session ID to verify:");
     let mut session_id = String::new();
@@ -167,10 +198,7 @@ async fn verify_signing_session(
         .expect("Failed to read line");
     session_id = session_id.trim().to_string();
 
-    match peer
-        .verify(random_oracle.clone(), signing_coordinator, &session_id)
-        .await
-    {
+    match peer.verify(signing_coordinator, &session_id).await {
         Ok(VerificationResult::VerifiedSignature) => {
             log::info!(
                 "Successfully verified signatures for session {}.",
@@ -187,16 +215,11 @@ async fn verify_signing_session(
 #[tokio::main]
 async fn main() {
     env_logger::init();
-    log::info!("Starting peer...");
+    log::info!("Starting...");
 
     let args = Args::parse();
 
-    let private_key: PrivateKey<ProjectivePoint> = PrivateKey::<ProjectivePoint>::from(
-        <ProjectivePoint as GroupElement>::ScalarType::from_byte_array(&args.private_key)
-            .expect("Invalid private_key"),
-    );
-    let mut peer = Peer::new(private_key);
-    log::info!("Peer created with public key: {:?}", peer.public_key); // TODO: pretty print
+    let secp256k1_sk = K256SigningKey::from_bytes(&args.private_key.into()).unwrap();
 
     let endpoint = CosmosEndpoint::new(args.cosmos_config_path.to_str().unwrap());
     let key = SigningKey {
@@ -205,17 +228,21 @@ async fn main() {
         derivation_path: "m/44'/118'/0'/0/0".to_string(),
     };
 
-    let dkg_coordinator =
-        dkg_coordinator::DkgCoordinator::new(endpoint.clone(), args.dkg_coordinator, key.clone());
-    let signing_coordinator = signing_coordinator::SigningCoordinator::new(
-        endpoint.clone(),
-        args.signing_coordinator,
-        key.clone(),
-    );
-    let random_oracle = RandomOracle::new("dkg"); // TODO: What should be the initial prefix?
+    // DKG part
+    let mut dkg_peer = DKGPeer::new(&secp256k1_sk);
+    log::info!(
+        "DKG peer created with public key: {:?}",
+        dkg_peer.public_key
+    ); // TODO: pretty print
+
+    let dkg_coordinator = DkgCoordinator::new(endpoint.clone(), args.dkg_coordinator, key.clone());
+    let random_oracle = RandomOracle::new("dkg");
 
     loop {
-        println!("Make a wish (dkg:create-session | dkg:join-session | sign:create-session | sign:join-session | sign:verify-session):");
+        if dkg_peer.dkg_completed() {
+            break;
+        }
+        println!("Make a wish (dkg:create-session | dkg:join-session):");
         let mut command = String::new();
         std::io::stdin()
             .read_line(&mut command)
@@ -225,13 +252,41 @@ async fn main() {
         match command {
             "dkg:create-session" => create_dkg_session(&dkg_coordinator).await,
             "dkg:join-session" => {
-                join_dkg_session(&mut peer, &dkg_coordinator, &random_oracle).await
+                join_dkg_session(&mut dkg_peer, &dkg_coordinator, &random_oracle).await;
             }
-            "sign:create-session" => create_signing_session(&signing_coordinator).await,
-            "sign:join-session" => join_signing_session(&mut peer, &signing_coordinator).await,
-            "sign:verify-session" => {
-                verify_signing_session(&mut peer, &signing_coordinator, &random_oracle).await
+            _ => log::error!("Genie doesn't know what to do."),
+        }
+    }
+
+    // Signing part
+    let mut signing_peer = SigningPeer::new(&secp256k1_sk, &dkg_peer.dkg_output.unwrap()).unwrap();
+    log::info!("Signing peer successfully created.");
+
+    let signing_coordinator = signing_coordinator::SigningCoordinator::new(
+        endpoint.clone(),
+        args.signing_coordinator,
+        key.clone(),
+    );
+
+    loop {
+        println!(
+            "Make a wish (sign:create-session | sign:commit | sign:partially-sign | sign:verify):"
+        );
+        let mut command = String::new();
+        std::io::stdin()
+            .read_line(&mut command)
+            .expect("Failed to read line");
+        let command = command.trim();
+        log::info!("Granting wish..");
+        match command {
+            "sign:create-session" => {
+                create_signing_session(&signing_peer, &signing_coordinator).await
             }
+            "sign:commit" => commit_signing_session(&mut signing_peer, &signing_coordinator).await,
+            "sign:partially-sign" => {
+                partially_sign_signing_session(&mut signing_peer, &signing_coordinator).await
+            }
+            "sign:verify" => verify_signing_session(&mut signing_peer, &signing_coordinator).await,
             _ => log::error!("Genie doesn't know what to do."),
         }
     }

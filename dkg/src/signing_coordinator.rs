@@ -1,33 +1,35 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use cosm_tome::{
     chain::request::TxOptions,
     modules::{auth::model::Address, cosmwasm::model::ExecRequest},
     signing_key::key::SigningKey,
 };
-use fastcrypto::groups::{bls12381::G1Element, secp256k1::ProjectivePoint};
-use fastcrypto_tbls::{
-    nodes::{Nodes, PartyId},
-    types::IndexedValue,
-};
+use fastcrypto::groups::secp256k1::ProjectivePoint;
+use fastcrypto_tbls::nodes::Nodes;
+use frost_secp256k1::{round1::SigningCommitments, round2::SignatureShare, Identifier};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{endpoints::CosmosEndpoint, error::SigningError};
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
+pub enum SigningPhase {
+    Phase1,
+    Phase2,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SigningSession<PartialSignature> {
+pub struct SigningSession {
     pub session_id: String,
-    pub nodes: Nodes<ProjectivePoint>,
-    pub sigs: HashMap<PartyId, Vec<PartialSignature>>,
-    pub payload: Vec<u8>,
+    pub phase: SigningPhase,
+    pub commitments: BTreeMap<Identifier, SigningCommitments>,
+    pub signature_shares: BTreeMap<Identifier, SignatureShare>,
+    pub payload: String,
 }
 
 #[allow(async_fn_in_trait)]
-pub trait SigningCoordinatorInterface<PartialSignature>
-where
-    PartialSignature: Serialize + for<'a> Deserialize<'a>,
-{
+pub trait SigningCoordinatorInterface {
     /// Create a new signing session.
     async fn create_session(
         &self,
@@ -36,26 +38,23 @@ where
     ) -> Result<String, SigningError>;
 
     /// Fetch signing session by id
-    async fn fetch_session(
-        &self,
-        id: String,
-    ) -> Result<SigningSession<PartialSignature>, SigningError>;
+    async fn fetch_session(&self, id: String) -> Result<SigningSession, SigningError>;
 
-    /// Post partial signatures for request with given id
-    async fn post_partial_signatures(
+    /// Post signature shares for session with given id
+    async fn post_signature_shares(
         &self,
         session_id: String,
-        partial_signatures: Vec<PartialSignature>,
+        signature_shares: BTreeMap<Identifier, SignatureShare>,
         signature: k256::ecdsa::Signature,
         pk: k256::ecdsa::VerifyingKey,
-    ) -> Result<Vec<PartialSignature>, SigningError>;
+    ) -> Result<BTreeMap<Identifier, SignatureShare>, SigningError>;
 
-    async fn post_commitment(&self) -> Result<(), SigningError>;
-
-    // could maybe be implemented on the smart contract
-    async fn post_signing_package(&self) -> Result<(), SigningError>;
-
-    async fn post_signature_share(&self) -> Result<(), SigningError>;
+    /// Post commitements for session with given id
+    async fn post_commitments(
+        &self,
+        session_id: String,
+        commitments: BTreeMap<Identifier, SigningCommitments>,
+    ) -> Result<(), SigningError>;
 }
 
 pub struct SigningCoordinator<C, A> {
@@ -89,18 +88,12 @@ impl SigningCoordinator<CosmosEndpoint, Address> {
     }
 }
 
-impl SigningCoordinatorInterface<IndexedValue<G1Element>>
-    for SigningCoordinator<CosmosEndpoint, Address>
-{
-    async fn post_commitment(&self) -> Result<(), SigningError> {
-        unimplemented!()
-    }
-
-    async fn post_signature_share(&self) -> Result<(), SigningError> {
-        unimplemented!()
-    }
-
-    async fn post_signing_package(&self) -> Result<(), SigningError> {
+impl SigningCoordinatorInterface for SigningCoordinator<CosmosEndpoint, Address> {
+    async fn post_commitments(
+        &self,
+        _session_id: String,
+        _commitments: BTreeMap<Identifier, SigningCommitments>,
+    ) -> Result<(), SigningError> {
         unimplemented!()
     }
 
@@ -156,10 +149,7 @@ impl SigningCoordinatorInterface<IndexedValue<G1Element>>
         }
     }
 
-    async fn fetch_session(
-        &self,
-        id: String,
-    ) -> Result<SigningSession<IndexedValue<G1Element>>, SigningError> {
+    async fn fetch_session(&self, id: String) -> Result<SigningSession, SigningError> {
         let query_msg = json!({
             "SigningSession": {
                 "session_id": id
@@ -177,17 +167,17 @@ impl SigningCoordinatorInterface<IndexedValue<G1Element>>
         }
     }
 
-    async fn post_partial_signatures(
+    async fn post_signature_shares(
         &self,
         session_id: String,
-        partial_signatures: Vec<IndexedValue<G1Element>>,
+        signature_shares: BTreeMap<Identifier, SignatureShare>,
         signature: k256::ecdsa::Signature,
         pk: k256::ecdsa::VerifyingKey,
-    ) -> Result<Vec<IndexedValue<G1Element>>, SigningError> {
+    ) -> Result<BTreeMap<Identifier, SignatureShare>, SigningError> {
         let execute_message = json!({
             "PostPartialSig": {
                 "session_id": session_id,
-                "partial_sigs": serde_json::to_value(partial_signatures.clone()).unwrap(),
+                "partial_sigs": serde_json::to_value(signature_shares.clone()).unwrap(),
                 "pk": pk.to_sec1_bytes(),
                 "signature": signature.to_bytes(),
             }
@@ -213,7 +203,7 @@ impl SigningCoordinatorInterface<IndexedValue<G1Element>>
             .await;
 
         match res {
-            Ok(_) => Ok(partial_signatures),
+            Ok(_) => Ok(signature_shares),
             Err(_) => Err(SigningError::ErrorPostingPartialSignatures),
         }
     }
@@ -221,25 +211,18 @@ impl SigningCoordinatorInterface<IndexedValue<G1Element>>
 
 #[cfg(test)]
 mod test {
-    use std::{
-        collections::{BTreeMap, HashMap},
-        num::NonZero,
-    };
+    use std::collections::BTreeMap;
 
     use cosm_tome::{
         modules::auth::model::Address,
         signing_key::key::{Key, SigningKey},
     };
-    use fastcrypto::{
-        groups::{bls12381::G1Element, secp256k1::ProjectivePoint, GroupElement},
-        serde_helpers::ToFromByteArray,
-    };
+    use fastcrypto::{groups::secp256k1::ProjectivePoint, serde_helpers::ToFromByteArray};
     use fastcrypto_tbls::{
         dkg::Party,
         ecies::{PrivateKey, PublicKey},
-        nodes::{Node, Nodes, PartyId},
+        nodes::{Node, Nodes},
         random_oracle::RandomOracle,
-        types::IndexedValue,
     };
     use k256::ecdsa::signature::Signer;
     use rand::thread_rng;
@@ -247,9 +230,7 @@ mod test {
     use crate::{endpoints::CosmosEndpoint, signing_coordinator::SigningCoordinatorInterface};
 
     use super::SigningCoordinator;
-    use frost_secp256k1::{
-        self as frost, round1::SigningCommitments, round2::SignatureShare, SigningPackage,
-    };
+    use frost_secp256k1::{round2::SignatureShare, Identifier};
 
     fn create_test_key() -> SigningKey {
         SigningKey {
@@ -338,8 +319,8 @@ mod test {
         let session = fetch_session_res.unwrap();
 
         assert_eq!(session.session_id, session_id);
-        assert_eq!(session.payload, payload.as_bytes().to_vec());
-        assert_eq!(session.sigs, HashMap::new());
+        assert_eq!(session.payload, payload);
+        assert_eq!(session.signature_shares, BTreeMap::new());
     }
 
     #[tokio::test]
@@ -348,23 +329,21 @@ mod test {
         let coordinator = create_coordinator_instance();
         let (keys, _, _, nodes) = create_parties(5);
         let payload = "foobar";
-        let mut expected_signatures = HashMap::new();
 
         let session_id = coordinator
             .create_session(nodes, payload.as_bytes().to_vec())
             .await
             .unwrap();
 
-        let partial_sigs: Vec<IndexedValue<G1Element>> = vec![
-            IndexedValue {
-                index: NonZero::new(1).unwrap(),
-                value: G1Element::zero(),
-            },
-            IndexedValue {
-                index: NonZero::new(2).unwrap(),
-                value: G1Element::zero(),
-            },
-        ];
+        let mut partial_sigs = BTreeMap::new();
+        partial_sigs.insert(
+            Identifier::new((1 as u32).try_into().unwrap()).unwrap(),
+            SignatureShare::deserialize(&[0; 32]).unwrap(),
+        );
+        partial_sigs.insert(
+            Identifier::new((2 as u32).try_into().unwrap()).unwrap(),
+            SignatureShare::deserialize(&[0; 32]).unwrap(),
+        );
 
         let partial_sig_json = serde_json::to_string(&partial_sigs.clone()).unwrap();
         let partial_sig_bytes = partial_sig_json.as_bytes();
@@ -376,120 +355,33 @@ mod test {
 
         // pushing 2 signatures
         assert!(coordinator
-            .post_partial_signatures(session_id.clone(), partial_sigs.clone(), signature, *pk,)
+            .post_signature_shares(session_id.clone(), partial_sigs.clone(), signature, *pk,)
             .await
             .is_ok());
-        expected_signatures.insert(0 as PartyId, partial_sigs);
+
+        let mut expected_signatures = partial_sigs.clone();
 
         // prepare to push an extra signature
-        let partial_sigs: Vec<IndexedValue<G1Element>> = vec![IndexedValue {
-            index: NonZero::new(3).unwrap(),
-            value: G1Element::zero(),
-        }];
+        let mut partial_sigs = BTreeMap::new();
+        partial_sigs.insert(
+            Identifier::new((3 as u32).try_into().unwrap()).unwrap(),
+            SignatureShare::deserialize(&[0; 32]).unwrap(),
+        );
+
         let partial_sig_json = serde_json::to_string(&partial_sigs.clone()).unwrap();
         let partial_sig_bytes = partial_sig_json.as_bytes();
         let signature: k256::ecdsa::Signature = sk.sign(&partial_sig_bytes);
 
         assert!(coordinator
-            .post_partial_signatures(session_id.clone(), partial_sigs.clone(), signature, *pk,)
+            .post_signature_shares(session_id.clone(), partial_sigs.clone(), signature, *pk,)
             .await
             .is_ok());
-        let stored_signatures = expected_signatures.get_mut(&(0 as PartyId)).unwrap();
-        stored_signatures.push(partial_sigs[0].clone());
+        expected_signatures.insert(
+            Identifier::new((3 as u32).try_into().unwrap()).unwrap(),
+            partial_sigs.values().next().unwrap().clone(),
+        );
 
         let session = coordinator.fetch_session(session_id.clone()).await.unwrap();
-        assert_eq!(session.sigs, expected_signatures);
-    }
-
-    #[tokio::test]
-    async fn frost_example() {
-        let mut rng = thread_rng();
-        let max_signers = 5;
-        let min_signers = 3;
-        let (shares, pubkey_package) = frost::keys::generate_with_dealer(
-            max_signers,
-            min_signers,
-            frost::keys::IdentifierList::Default,
-            &mut rng,
-        )
-        .unwrap();
-
-        let mut key_packages: BTreeMap<_, _> = BTreeMap::new();
-
-        for (identifier, secret_share) in shares {
-            let key_package = frost::keys::KeyPackage::try_from(secret_share).unwrap();
-            key_packages.insert(identifier, key_package);
-        }
-
-        let mut nonces_map = BTreeMap::new();
-        let mut commitments_map = BTreeMap::new();
-
-        ////////////////////////////////////////////////////////////////////////////
-        // Round 1: generating nonces and signing commitments for each participant
-        ////////////////////////////////////////////////////////////////////////////
-
-        // In practice, each iteration of this loop will be executed by its respective participant.
-        for participant_index in 1..=min_signers {
-            let participant_identifier = participant_index.try_into().expect("should be nonzero");
-            let key_package = &key_packages[&participant_identifier];
-            // Generate one (1) nonce and one SigningCommitments instance for each
-            // participant, up to _threshold_.
-            let (nonces, commitments) =
-                frost::round1::commit(key_package.signing_share(), &mut rng);
-            // In practice, the nonces must be kept by the participant to use in the
-            // next round, while the commitment must be sent to the coordinator
-            // (or to every other participant if there is no coordinator) using
-            // an authenticated channel.
-            nonces_map.insert(participant_identifier, nonces);
-            commitments_map.insert(participant_identifier, commitments);
-        }
-
-        // This is what the signature aggregator / coordinator needs to do:
-        // - decide what message to sign
-        // - take one (unused) commitment per signing participant
-        let mut signature_shares = BTreeMap::new();
-        let message = "message to sign".as_bytes();
-        let signing_package = frost::SigningPackage::new(commitments_map, message);
-
-        ////////////////////////////////////////////////////////////////////////////
-        // Round 2: each participant generates their signature share
-        ////////////////////////////////////////////////////////////////////////////
-
-        // In practice, each iteration of this loop will be executed by its respective participant.
-        for participant_identifier in nonces_map.keys() {
-            let key_package = &key_packages[participant_identifier];
-
-            let nonces = &nonces_map[participant_identifier];
-
-            // Each participant generates their signature share.
-            let signature_share =
-                frost::round2::sign(&signing_package, nonces, key_package).unwrap();
-
-            // In practice, the signature share must be sent to the Coordinator
-            // using an authenticated channel.
-            signature_shares.insert(*participant_identifier, signature_share);
-        }
-
-        let participant_index: u16 = 1;
-        let participant_identifier = participant_index.try_into().expect("should be nonzero");
-        let share = signature_shares.get(&participant_identifier).unwrap();
-
-        ////////////////////////////////////////////////////////////////////////////
-        // Aggregation: collects the signing shares from all participants,
-        // generates the final signature.
-        ////////////////////////////////////////////////////////////////////////////
-
-        // Aggregate (also verifies the signature shares)
-        let group_signature =
-            frost::aggregate(&signing_package, &signature_shares, &pubkey_package).unwrap();
-
-        // Check that the threshold signature can be verified by the group public
-        // key (the verification key).
-        let is_signature_valid = pubkey_package
-            .verifying_key()
-            .verify(message, &group_signature)
-            .is_ok();
-        assert!(is_signature_valid);
-        assert!(false, "worked")
+        assert_eq!(session.signature_shares, expected_signatures);
     }
 }

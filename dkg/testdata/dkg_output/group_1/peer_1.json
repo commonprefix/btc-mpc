@@ -1,0 +1,58 @@
+{
+  "nodes": {
+    "nodes": [
+      {
+        "id": 0,
+        "pk": "A19Ihu1JHzbxoSH8DYNztINNeikSGHWG1UXg5kZt59o8",
+        "weight": 4
+      },
+      {
+        "id": 1,
+        "pk": "A6M6c9e9dX7GLQkJTIXFJfl98GWmoWqBFyMyNFv7fiXd",
+        "weight": 5
+      },
+      {
+        "id": 2,
+        "pk": "AzAPZ72kxC5kiaCNrvs8yP9aCYzMR2U46JwSiC7Dmllg",
+        "weight": 7
+      }
+    ],
+    "total_weight": 16,
+    "accumulated_weights": [
+      4,
+      9,
+      16
+    ],
+    "nodes_with_nonzero_weight": [
+      0,
+      1,
+      2
+    ]
+  },
+  "vss_pk": [
+    "A8aigr3Xi6RQS7lDn7/2dEnqSOP122SwYcszXjf8KGLR",
+    "Ay2gKOna8Bxy6dIfSbuKzjVse7kJM92F+oedVZ5tA2Mc",
+    "ArBEc7xOE3QuUEj2OXMamHy+5YEC68nEnRWiIhDxqOid",
+    "Axo0SoYW0vZ3dhH6uqeVnO6llR+VJR7Owf2b71cK9NBp",
+    "As5CpuL3eMoBXLV0iqCtepPs2aAm+ydEvJezsn9SFs/T",
+    "AvoH27XLdg9sIBzgDPNPAFvv+HEMBJ5WJexF66VNDmZG"
+  ],
+  "shares": [
+    {
+      "index": 1,
+      "value": "uHziG112FoSrf8KUbep+MvPrfCr3pRX4V2khHssnrr4="
+    },
+    {
+      "index": 2,
+      "value": "N7wsImKmGwt+RkW538qW+qj0ozjD8nrgX9YdPypNiik="
+    },
+    {
+      "index": 3,
+      "value": "ADeUCLX6q1lMuT/zY9EUyyi1qhCqgqA+lYo4x3oG0K0="
+    },
+    {
+      "index": 4,
+      "value": "6u2pZPb2DpNvEUw7mSywGSUydl+v9cGsjjZ+k10DEQw="
+    }
+  ]
+}

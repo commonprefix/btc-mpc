@@ -14,16 +14,20 @@ pub enum DKGError {
     MessagePostingCompleted,
     #[error("Confirmation posting phase has been completed")]
     ConfirmationPostingCompleted,
+    #[error("DKG not complete yet")]
+    DKGPending,
 }
 
 #[derive(Error, Debug, PartialEq)]
 pub enum SigningError {
-    #[error("DKG not complete yet")]
-    DKGPending,
     #[error("Error creating signing session")]
     ErrorCreatingSession,
     #[error("Error fetching session")]
     ErrorFetchingSession,
+    #[error("Signing session not in commit phase")]
+    NotInCommitPhase,
+    #[error("Signing session not in signing phase")]
+    NotInSigningPhase,
     #[error("Error posting partial signatures")]
     ErrorPostingPartialSignatures,
 }
